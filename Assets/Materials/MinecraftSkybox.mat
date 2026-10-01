@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 6
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: MinecraftSkybox
+  m_Shader: {fileID: 4800000, guid: 1f9c47b2e83a4d15b6c08f2793ad5e41, type: 3}
+  m_ShaderKeywords: 
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Floats:
+    - _Exponent: 1.5
+    - _SunGlow: 0.4
+    - _SunSize: 0.02
+    m_Colors:
+    - _GroundColor: {r: 0.75, g: 0.85, b: 1, a: 1}
+    - _HorizonColor: {r: 0.75, g: 0.85, b: 1, a: 1}
+    - _SunColor: {r: 1, g: 0.97, b: 0.9, a: 1}
+    - _TopColor: {r: 0.47, g: 0.65, b: 1, a: 1}
+    - _SunDirection: {r: 0.3214, g: 0.766, b: -0.5567, a: 0}
