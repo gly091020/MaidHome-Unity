@@ -10,9 +10,51 @@ namespace MaidHome.Core.Storage
     /// </summary>
     public static class AppPaths
     {
+        static string _cacheRoot;
+        static string _tmpRoot;
+        static string _savesRoot;
+
+        /// <summary>
+        /// Application.persistentDataPath 只能在主线程调，而 Portal 的收文件是后台线程干的，
+        /// 所以进游戏时先把根目录算出来存住，之后任何线程都只是读字符串。
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        public static void WarmUp()
+        {
+            string persistent = Application.persistentDataPath;
+            _cacheRoot = Path.Combine(persistent, "cache");
+            _tmpRoot = Path.Combine(persistent, "tmp");
+            _savesRoot = Application.platform == RuntimePlatform.Android
+                // 还没做 SAF / MediaStore 的 Java 桥，公共 Documents 拿不到，先退回应用私有目录
+                ? Path.Combine(persistent, "saves")
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MaidHome", "saves");
+        }
+
         public static string CacheRoot
         {
-            get { return Path.Combine(Application.persistentDataPath, "cache"); }
+            get
+            {
+                if (string.IsNullOrEmpty(_cacheRoot))
+                {
+                    WarmUp();
+                }
+
+                return _cacheRoot;
+            }
+        }
+
+        /// <summary>传输/下载中的半成品，写完再 Move 到正式目录。</summary>
+        public static string TmpRoot
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_tmpRoot))
+                {
+                    WarmUp();
+                }
+
+                return _tmpRoot;
+            }
         }
 
         /// <summary>女仆存档根目录，里面一个 uuid 一个文件夹。</summary>
@@ -37,13 +79,12 @@ namespace MaidHome.Core.Storage
         {
             get
             {
-                if (Application.platform == RuntimePlatform.Android)
+                if (string.IsNullOrEmpty(_savesRoot))
                 {
-                    // 还没做 SAF / MediaStore 的 Java 桥，公共 Documents 拿不到，先退回应用私有目录
-                    return Path.Combine(Application.persistentDataPath, "saves");
+                    WarmUp();
                 }
 
-                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MaidHome", "saves");
+                return _savesRoot;
             }
         }
 

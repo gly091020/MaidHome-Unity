@@ -25,7 +25,22 @@ namespace MaidHome.Interop.Maid
 
         public static string FolderOf(MaidSaveData maid)
         {
-            return Path.Combine(Path.Combine(AppPaths.CacheRoot, "maid"), Sanitize(maid.Id));
+            return FolderOf(maid.Id);
+        }
+
+        public static string FolderOf(string maidId)
+        {
+            return Path.Combine(Path.Combine(AppPaths.CacheRoot, "maid"), Sanitize(maidId));
+        }
+
+        /// <summary>女仆从存档里消失时（例如被发回 MC）连缓存一起清掉。</summary>
+        public static void DeleteFolder(string maidId)
+        {
+            string folder = FolderOf(maidId);
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, true);
+            }
         }
 
         public static string BinPath(MaidSaveData maid)

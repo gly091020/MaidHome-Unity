@@ -37,5 +37,20 @@ namespace MaidHome.Core.Save
             Maids.Add(record);
             return record;
         }
+
+        /// <summary>删掉一只女仆的世界记录，返回是否真的删到了。</summary>
+        public bool Remove(string id)
+        {
+            for (int i = 0; i < Maids.Count; i++)
+            {
+                if (Maids[i].Id == id)
+                {
+                    Maids.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

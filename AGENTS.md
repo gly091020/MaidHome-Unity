@@ -140,7 +140,7 @@ Unity 游戏工程，需要和 Minecraft 模组（NeoForge 1.21.1 生态，例�
 - 加载：`MaidAssetLoader.Load(maid)` —— 缓存新鲜就读缓存，否则转一遍（网格 + AnimationClip）并写缓存
 - 动画合并：先铺共用的 `maid.animation.json`，再用模型自带的那份**按同名覆盖**（TLM 的行为）；一根骨骼都对不上的动画跳过并记警告
 - 缓存：`MaidAssetCache` 写 `persistentDataPath/cache/maid/<uuid>/`，里面是 `maid.bin`（网格 + 烘焙好的动画采样）、`manifest.json`（源文件 sha256 + 统计，人可读）、`texture.png`。`manifest` 里 sha256 一变就重转；缓存是可再生的，删了只会慢一次
-- 编辑器入口：`Tools/MaidHome/女仆存档`（扫描 / 单个或批量转换 / 生成到场景 / 清缓存 / 打开缓存目录）
+- 编辑器入口：`Tools/MaidHome/存档编辑器`（女仆页能改 maid.json 字段、切背包状态、转模型写缓存、复制、删除；房子页能设为当前房子；音效包页能看事件数、删除。删除和覆盖前都会弹确认，`maid.json` 覆盖前自动留一份 `.bak`）
 - 采样：只按采样率铺到**最后一个关键帧**为止，之后的值是常量（`maid.animation.json` 里有 `animation_length = 1000` 的动画，整条铺会炸）；被 `anim_time` 表达式驱动的动画才整条铺
 - **硬编码：名叫 `FOX`（忽略大小写）的节点一律 `SetActive(false)`** —— 模组里狐狸是单独实体，模型里那份只是占位（winefox 里 `MRoot/Root/FOX/AllBody2/...` 是一整只狐狸，含 bow2 / 耳朵 / 手脚）。规则在 `MaidAssetLoader.HiddenNodes` + `ApplyModelRules`，**建完模型要调一次、读缓存回来也要再调一次**（缓存不存 active 状态），两处调用点都不能删
 - `maid.json` 的 `scale`（倍率，缺省 1）缩放的是**模型根节点的 localScale**，和 FOX 规则一起在 `ApplyModelRules` 里套用。它**不进缓存**（改了不该重转），所以同样靠"建完 / 读缓存后各调一次"保证最新。CharacterController 的 height/radius 是局部值，会跟着根节点缩放自动变小，不用另算；`HouseNavMesh` 的 agent 半径是烘房子用的，跟女仆缩放无关
@@ -169,13 +169,13 @@ Unity 游戏工程，需要和 Minecraft 模组（NeoForge 1.21.1 生态，例�
 - 女仆：`MaidNavigator` 沿拐点走；`MaidWanderer` 场景里有 `HouseGridView` 就按格寻路，没有就退回 `WanderArea` 在平面直走
 - **寻路现在是 NavMesh**（2026-10 换的）：`HouseNavMesh`（`Assets/Scripts/Gameplay/House`）在房子加载完、加好 MeshCollider 之后烘一次（`CollectSources` → `BuildNavMeshData` → `NavMesh.AddNavMeshData`），随后 `MaidNavigator` 用 `NavMesh.CalculatePath` 取 corners，仍然喂给原来那套"沿拐点走"的逻辑；目的地从房子包围盒随机采点 + `NavMesh.SamplePosition`
 - **烘出来的"能走"只是几何意义上的能走**：台阶拼的桌子照走不误，所以必须按数据挖洞。`HouseGrid.MarkEnclosedNonWalkable` 只标"被走道围住的不可走格"——外墙靠几何本来就挡住了，挖了反而会吃掉贴墙的走道；挖洞用 `NavMeshObstacle`（Box + Carving）
-- 换 NavMesh 时把退役的一并清了：`GridPathfinder.cs`（整个文件）、`HouseGrid.FindWalkableY`、`HouseGrid.CellFeet`、`HouseGridView.WorldToCell`/`TrySnapFeet`/`TryFindNearestCell`/`Describe`、`MaidNavigator.Describe`。`HouseGridView` 现在只剩 `Grid` / `Axis` / `CellFeet`（挖洞、gizmo、房子对齐检查在用）
+- 换 NavMesh 时把退役的一并清了：`GridPathfinder.cs`（整个文件）、`HouseGrid.FindWalkableY`、`HouseGrid.CellFeet`、`HouseGridView.WorldToCell`/`TrySnapFeet`/`TryFindNearestCell`/`Describe`、`MaidNavigator.Describe`。`HouseGridView` 现在只剩 `Grid` / `Axis` / `CellFeet`（挖洞和 gizmo 在用）
 - 对齐检查仍然有用：挖洞位置是 `HouseGridMapper.ToLocal(view.Axis, ...)` 算的，Axis 错了洞就挖在别处
-- 调试：`HouseGridGizmoDrawer`（`Assets/Scripts/Editor`）把可走格画在 Scene 视图里，**只用于调试**，顺便用来确认"行到底是 z 还是 x"这种朝向问题；`HouseAlignCheckWindow`（菜单 `Tools/MaidHome/房子对齐检查`）用向下射线验证 8 种朝向里哪一种能让格子落在楼板上
+- 调试：`HouseGridGizmoDrawer`（`Assets/Scripts/Editor`）把可走格画在 Scene 视图里，**只用于调试**，顺便用来确认"行到底是 z 还是 x"这种朝向问题
 - **glTFast 导入时会把顶点的 x 取反**（右手系转左手系，见包里的 `Jobs.cs`：`new float3(-(float)off[0], off[1], off[2])`），所以 Unity 里看到的模型相对 glTF 文件是沿 X **镜像**的。格数据是方块/文件坐标系（不镜像），映射到世界时必须跟着取反，否则整张格表偏 W 格、形状左右翻（看起来像转了 90°）。换算**只在 `HouseGridMapper` 里写一份**，`HouseGridView` / `MaidNavigator` / gizmo 都调它
 - 格到世界取的是**格中心**（`CellCenter`），不是角点：取角点女仆会贴着墙走
 - 女仆落点有三级兜底：先找同一列最近的可走格 → 整张表水平最近 → 如果落点在一个小连通块里（比如和地板连不上的半格床）就换到主区域。少了这一步，她会落在床那两格上出不来，表现为"站着不动"
 - 挑随机目标最多试 8 次：随机挑到的格子可能是走不到的（孤岛），一次失败就回待机的话她会频繁发呆。8 次都算不出路径时每 10 秒打一条警告，别让它静默卡住
-- 方向是可调的：`HouseGridView.Axis` 有 8 种候选（旋转 0/90/180/270 × 是否镜像 X），默认 `MirrorX`（glTFast 的行为）。用菜单 `Tools/MaidHome/房子对齐检查` 量出来再定。换算实现**只有 `HouseGridMapper` 一份**，也不要再加"写死默认方向"的便捷重载——之前同一个规则抄了四份，改一处漏三处
-- 排查顺序：先看 Console 有没有编译错误（有的话代码根本没生效）→ 跑一次「房子对齐检查」确认 Axis → 再看女仆日志是"找不到能走到的目标"（格数据/连通性问题）还是"走不动"（被几何卡住，碰撞体问题）
+- 方向是可调的：`HouseGridView.Axis` 有 8 种候选（旋转 0/90/180/270 × 是否镜像 X），默认 `MirrorX`（glTFast 的行为）。用 `python Tools/house_align_check.py <house.gltf> <house.json>` 量出来再定（原来的 `HouseAlignCheckWindow` 已删除）。换算实现**只有 `HouseGridMapper` 一份**，也不要再加"写死默认方向"的便捷重载——之前同一个规则抄了四份，改一处漏三处
+- 排查顺序：先看 Console 有没有编译错误（有的话代码根本没生效）→ 跑一次 `python Tools/house_align_check.py` 确认 Axis → 再看女仆日志是"找不到能走到的目标"（格数据/连通性问题）还是"走不动"（被几何卡住，碰撞体问题）
 - **日志约定**：只留两类——一次性摘要（加载成功、NavMesh 烘焙结果）和真失败警告（限流，比如 5~10 秒一条）。排查用的 trace / 状态跟踪 / 逐帧打印用完就删，别留在代码里

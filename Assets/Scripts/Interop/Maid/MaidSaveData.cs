@@ -1,6 +1,10 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using MaidHome.Core.Json;
+using MaidHome.Core.Storage;
 
 namespace MaidHome.Interop.Maid
 {
@@ -142,6 +146,104 @@ namespace MaidHome.Interop.Maid
         string PathOf(string file)
         {
             return string.IsNullOrEmpty(file) ? "" : Path.Combine(Folder, file);
+        }
+
+        // ------------------------------------------------------------ 写回
+
+        /// <summary>
+        /// 把当前字段写回 maid.json（先写 .tmp 再替换，原文件留一份 .bak）。
+        /// 注意：只写下面列出的字段，MC 侧以后往 maid.json 里加新字段的话，
+        /// 这里的 ToJson 也要跟着补，否则编辑器保存一次就把那个字段丢了。
+        /// </summary>
+        public bool TrySave(out string error)
+        {
+            error = "";
+            if (string.IsNullOrEmpty(Folder))
+            {
+                error = "这只女仆没有存档目录";
+                return false;
+            }
+
+            string path = Path.Combine(Folder, "maid.json");
+            string temp = path + ".tmp";
+            try
+            {
+                AppPaths.EnsureDirectory(Folder);
+                File.WriteAllText(temp, ToJson(), new UTF8Encoding(false));
+                if (File.Exists(path))
+                {
+                    File.Copy(path, path + ".bak", true);
+                    File.Delete(path);
+                }
+
+                File.Move(temp, path);
+                Warnings.Clear();
+                CheckFiles();
+                return true;
+            }
+            catch (Exception exception)
+            {
+                error = exception.Message;
+                return false;
+            }
+        }
+
+        public string ToJson()
+        {
+            List<string> lines = new List<string>();
+            lines.Add("  \"model\": " + Quote(ModelFile));
+            lines.Add("  \"texture\": " + Quote(TextureFile));
+            lines.Add("  \"anim\": " + Quote(AnimationFile));
+            lines.Add("  \"name\": " + Quote(Name));
+            lines.Add("  \"level\": " + Level.ToString(CultureInfo.InvariantCulture));
+            lines.Add("  \"owner_name\": " + Quote(OwnerName));
+            lines.Add("  \"owner_uuid\": " + Quote(OwnerUuid));
+            lines.Add("  \"scale\": " + Scale.ToString("R", CultureInfo.InvariantCulture));
+            lines.Add("  \"simple_bedrock_model\": " + (SimpleBedrockModel ? "true" : "false"));
+            if (!string.IsNullOrEmpty(SoundPackId))
+            {
+                lines.Add("  \"sound\": " + Quote(SoundPackId));
+            }
+
+            if (SoundFrequency < 1f)
+            {
+                lines.Add("  \"sound_freq\": " + SoundFrequency.ToString("R", CultureInfo.InvariantCulture));
+            }
+
+            return "{\n" + string.Join(",\n", lines.ToArray()) + "\n}\n";
+        }
+
+        static string Quote(string text)
+        {
+            StringBuilder result = new StringBuilder("\"");
+            if (text != null)
+            {
+                for (int i = 0; i < text.Length; i++)
+                {
+                    char c = text[i];
+                    switch (c)
+                    {
+                        case '"': result.Append("\\\""); break;
+                        case '\\': result.Append("\\\\"); break;
+                        case '\n': result.Append("\\n"); break;
+                        case '\r': result.Append("\\r"); break;
+                        case '\t': result.Append("\\t"); break;
+                        default:
+                            if (c < ' ')
+                            {
+                                result.Append("\\u").Append(((int)c).ToString("x4"));
+                            }
+                            else
+                            {
+                                result.Append(c);
+                            }
+
+                            break;
+                    }
+                }
+            }
+
+            return result.Append('"').ToString();
         }
     }
 }
