@@ -1,10 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using MaidHome.Core.Input;
 using MaidHome.Gameplay.Audio;
-using MaidHome.Gameplay.House;
+using MaidHome.Interop.Bedrock;
 using UnityEngine;
-using UnityEngine.EventSystems;
 
 namespace MaidHome.Gameplay.Maid
 {
@@ -12,7 +12,8 @@ namespace MaidHome.Gameplay.Maid
     /// 摸尾巴模式：机制和参数照抄 moreanimation 的 TailInteractionState / TailSniffCamera。
     /// 点住尾巴 → 拖动改变目标角度（每帧最多变 18°）→ 7 段弹簧跟着走 → 松手弹回；
     /// 指针拉出屏幕中央 70%×65% 的安全区算"拉太狠"，她会喊疼；
-    /// 「吸一口」把相机凑到尾巴前，播 tail_sniff.ogg（最多 2 秒）再退回来。
+    /// 「吸一口」播 tail_sniff.ogg（最多 2 秒）；正交相机推近看不出远近，所以"凑近"用
+    /// 正交 size 缩放代替（相机位置全程不动）。
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class MaidTailInteraction : MonoBehaviour
@@ -34,22 +35,17 @@ namespace MaidHome.Gameplay.Maid
         [Tooltip("从抓住的位置往外拖这么多屏幕高度就算拉太狠")]
         [SerializeField] private float _overstretchDragFraction = 0.3f;
 
-        [Header("镜头")]
-        [Tooltip("进摸尾巴模式时，相机绕到尾巴背面、离尾巴多远")]
-        [SerializeField] private float _viewDistance = 1.5f;
-        [Tooltip("进模式时相机比尾巴高多少")]
-        [SerializeField] private float _viewHeight = 0.9f;
-        [Tooltip("背后视角框住整只女仆时留的余量")]
-        [SerializeField] private float _viewMargin = 1.1f;
-        [SerializeField] private float _sniffTravelSeconds = 0.3f;
+        [Header("转身")]
+        [Tooltip("进模式 / 退出模式时她转身要多久。相机全程不动，靠她转过来把尾巴露给镜头")]
+        [SerializeField] private float _turnSeconds = 0.35f;
 
         [Header("吸一口")]
+        [SerializeField] private float _sniffTravelSeconds = 0.3f;
         [SerializeField] private float _sniffMaxSeconds = 2f;
-        [Tooltip("吸的时候再往里推多远")]
-        [SerializeField] private float _sniffDistance = 0.65f;
-        [SerializeField] private float _sniffHeight = 0.35f;
-        [Tooltip("吸的时候只框住尾巴那条包围盒")]
-        [SerializeField] private float _sniffMargin = 1.15f;
+        [Tooltip("吸的时候正交 size 缩到这个比例（0.6 = 画面放大 1.67 倍）。正交下移动相机看不出远近，所以用 size 代替推近")]
+        [SerializeField] private float _sniffZoomScale = 0.6f;
+        [Tooltip("size 再小也不低于这个值，免得糊到看不清")]
+        [SerializeField] private float _sniffMinSize = 0.35f;
 
         [Header("音量")]
         [Tooltip("摸尾巴这块的音效和语音统一放大倍率。原文件本身录音小就往上调，最大 8")]
@@ -94,7 +90,7 @@ namespace MaidHome.Gameplay.Maid
 
         MaidAgent _agent;
         MaidTailChain _selected;
-        MaidTailPanel _panel;
+        public MaidTailPanel _panel;
         AudioSource _source;
         AudioClip _sniffClip;
         Coroutine _sniffRoutine;
@@ -102,9 +98,9 @@ namespace MaidHome.Gameplay.Maid
         bool _grabbed;
         bool _sniffing;
         bool _overstretched;
-        bool _hasAnchor;
-        Vector3 _anchorPoint;
-        Vector3 _anchorDirection;
+        // 吸一口前的正交 size，退出/中断时要还原，不然相机会一直停在放大状态
+        bool _hasCameraSize;
+        float _cameraBaseSize;
         Vector2 _dragOrigin;
         float _startYaw;
         float _startPitch;
@@ -150,7 +146,6 @@ namespace MaidHome.Gameplay.Maid
             _sniffClip = sniffClip;
             _selected = _chains[0];
             _simAccumulator = 0f;
-            CacheAnchor();
             EnsurePanel();
             if (_panel != null)
             {
@@ -158,7 +153,9 @@ namespace MaidHome.Gameplay.Maid
             }
 
             IsActive = true;
-            EnterTailView();
+            // 相机不动，她自己转过去把尾巴露给镜头
+            TurnTailToCamera();
+            SetParallelLayer(false);
             return true;
         }
 
@@ -218,8 +215,21 @@ namespace MaidHome.Gameplay.Maid
                 _sniffRoutine = null;
             }
 
-            // 进模式时镜头绕到了背面，不管是不是吸到一半退出，都得先把它拉回来
-            RestoreMaidView();
+            if (_hasCameraSize)
+            {
+                // 吸到一半被中断：把正交 size 还原，别让相机停在放大状态
+                Camera camera = Camera.main;
+                if (camera != null && camera.orthographic)
+                {
+                    camera.orthographicSize = _cameraBaseSize;
+                }
+
+                _hasCameraSize = false;
+            }
+
+            // 退出时让她转回来看镜头（女仆交互面板接着要开）
+            TurnToCamera();
+            SetParallelLayer(true);
 
             if (_panel != null)
             {
@@ -240,7 +250,6 @@ namespace MaidHome.Gameplay.Maid
             _sniffing = false;
             _overstretched = false;
             _simAccumulator = 0f;
-            _hasAnchor = false;
             IsActive = false;
         }
 
@@ -257,41 +266,42 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            // Android 返回键 / 电脑 Esc
+            if (PointerInput.BackPressed)
             {
                 End();
                 return;
             }
 
-            Vector2 pointer = Input.mousePosition;
+            PointerInput.Pointer pointer = PointerInput.Primary;
 
             if (_grabbed)
             {
                 // 松手判断放在最前面，免得指针抬在按钮上就卡住不放
-                if (Input.GetMouseButtonUp(0))
+                if (!pointer.Held)
                 {
                     Release();
                 }
                 else
                 {
-                    Drag(pointer);
+                    Drag(pointer.Position);
                 }
 
                 return;
             }
 
-            if (_sniffing || IsPointerOverUi())
+            if (_sniffing || pointer.OverUi)
             {
                 return;
             }
 
-            if (Input.GetMouseButtonDown(0))
+            if (pointer.Pressed)
             {
                 MaidTailChain chain;
                 int bone;
-                if (TryHit(pointer, out chain, out bone))
+                if (TryHit(pointer.Position, out chain, out bone))
                 {
-                    Grab(chain, pointer);
+                    Grab(chain, pointer.Position);
                 }
             }
         }
@@ -427,19 +437,18 @@ namespace MaidHome.Gameplay.Maid
             _overstretched = false;
             chain.Freeze(true);
 
-            HouseCameraFitter fitter = HouseCameraFitter.Instance;
-            if (fitter != null)
+            // 正交相机沿视线移动看不出"凑近"，改成把 size 缩小（画面放大）
+            Camera camera = Camera.main;
+            _hasCameraSize = camera != null && camera.orthographic;
+            _cameraBaseSize = _hasCameraSize ? camera.orthographicSize : 0f;
+            float zoomedSize = _hasCameraSize
+                ? Mathf.Max(_sniffMinSize, _cameraBaseSize * Mathf.Clamp(_sniffZoomScale, 0.1f, 1f))
+                : 0f;
+            if (_hasCameraSize)
             {
-                if (!_hasAnchor)
-                {
-                    CacheAnchor();
-                }
-
-                fitter.FocusOnPoint(_anchorPoint, _anchorDirection, _sniffDistance, _sniffHeight,
-                    _agent != null ? _agent.transform : null, chain.GetBounds(), _sniffMargin);
+                yield return StartCoroutine(SizeRoutine(zoomedSize, _sniffTravelSeconds));
             }
 
-            yield return new WaitForSeconds(_sniffTravelSeconds);
             PlaySniffSound();
             if (_panel != null)
             {
@@ -449,12 +458,11 @@ namespace MaidHome.Gameplay.Maid
             float wait = _sniffClip != null ? Mathf.Min(_sniffClip.length, _sniffMaxSeconds) : 1f;
             yield return new WaitForSeconds(wait);
 
-            if (fitter != null && _agent != null)
+            if (_hasCameraSize)
             {
-                EnterTailView();
+                yield return StartCoroutine(SizeRoutine(_cameraBaseSize, _sniffTravelSeconds));
+                _hasCameraSize = false;
             }
-
-            yield return new WaitForSeconds(_sniffTravelSeconds);
 
             chain.Freeze(false);
             chain.SetTarget(0f, 0f, false);
@@ -462,79 +470,67 @@ namespace MaidHome.Gameplay.Maid
             _sniffRoutine = null;
         }
 
-        /// 相机该待在尾巴哪一侧：从女仆身体指向尾巴的那一边（尾巴长在屁股后面，所以就是背面）
-        Vector3 ResolveBackDirection(Vector3 tailPoint)
+        /// <summary>正交相机"凑近"只能靠改 size：变小 = 画面放大（位置全程不动）</summary>
+        IEnumerator SizeRoutine(float target, float seconds)
+        {
+            Camera camera = Camera.main;
+            if (camera == null || !camera.orthographic)
+            {
+                yield break;
+            }
+
+            float start = camera.orthographicSize;
+            float length = Mathf.Max(0.01f, seconds);
+            float elapsed = 0f;
+            while (elapsed < length)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / length));
+                camera.orthographicSize = Mathf.Lerp(start, target, t);
+                yield return null;
+            }
+
+            camera.orthographicSize = target;
+        }
+
+        /// <summary>背对相机，把尾巴露给镜头。相机全程不动，所以只能她转。</summary>
+        void TurnTailToCamera()
+        {
+            Turn(false);
+        }
+
+        /// <summary>转回来面对相机，退出摸尾巴后接着看正脸。</summary>
+        void TurnToCamera()
+        {
+            Turn(true);
+        }
+
+        void Turn(bool faceCamera)
+        {
+            Camera camera = Camera.main;
+            MaidWanderer wanderer = _agent != null ? _agent.Wanderer : null;
+            if (camera == null || wanderer == null || !_agent.gameObject.activeInHierarchy)
+            {
+                return;
+            }
+
+            Vector3 toCamera = camera.transform.position - _agent.transform.position;
+            wanderer.FaceDirection(faceCamera ? toCamera : -toCamera, _turnSeconds);
+        }
+
+        /// <summary>摸尾巴期间关掉常驻摆动：尾巴这几根交给弹簧链写，两边都写会互相盖。</summary>
+        void SetParallelLayer(bool enabled)
         {
             if (_agent == null)
             {
-                return Vector3.back;
-            }
-
-            Vector3 direction = tailPoint - _agent.GetBounds().center;
-            direction.y = 0f;
-            if (direction.sqrMagnitude < 0.001f)
-            {
-                direction = -_agent.transform.forward;
-                direction.y = 0f;
-            }
-
-            if (direction.sqrMagnitude < 0.001f)
-            {
-                direction = Vector3.back;
-            }
-
-            return direction.normalized;
-        }
-
-        void RestoreMaidView()
-        {
-            HouseCameraFitter fitter = HouseCameraFitter.Instance;
-            if (fitter == null || _agent == null || !_agent.gameObject.activeInHierarchy)
-            {
                 return;
             }
 
-            fitter.FocusOn(_agent.GetBounds(), _agent.transform);
-        }
-
-        /// 进模式 / 吸完回来：相机待在尾巴背面看整条尾巴
-        void EnterTailView()
-        {
-            HouseCameraFitter fitter = HouseCameraFitter.Instance;
-            if (fitter == null || _agent == null || _selected == null)
+            BedrockAnimationPlayer player = _agent.GetComponent<BedrockAnimationPlayer>();
+            if (player != null)
             {
-                return;
+                player.ParallelEnabled = enabled;
             }
-
-            if (!_hasAnchor)
-            {
-                CacheAnchor();
-            }
-
-            // 背后视角按整只女仆重算视野角
-            fitter.FocusOnPoint(_anchorPoint, _anchorDirection, _viewDistance, _viewHeight, _agent.transform,
-                _agent.GetBounds(), _viewMargin);
-        }
-
-        /// 进模式时把尾巴的位置和朝向记下来：后面吸一口、退回都复用同一个点，
-        /// 不然尾巴一摆、镜头就跟着重算，看起来就是一会儿近一会儿远
-        void CacheAnchor()
-        {
-            if (_selected == null || _agent == null)
-            {
-                _hasAnchor = false;
-                return;
-            }
-
-            _anchorPoint = FocusPoint(_selected);
-            _anchorDirection = ResolveBackDirection(_anchorPoint);
-            _hasAnchor = true;
-        }
-
-        Vector3 FocusPoint(MaidTailChain chain)
-        {
-            Renderer renderer = chain.FocusRenderer();
-            return renderer != null ? renderer.bounds.center : chain.FocusPoint();
         }
 
         void PlaySniffSound()
@@ -674,11 +670,6 @@ namespace MaidHome.Gameplay.Maid
             float x = Mathf.Abs(pointer.x / Screen.width - 0.5f);
             float y = Mathf.Abs(pointer.y / Screen.height - 0.5f);
             return x <= _safeZoneWidth * 0.5f && y <= _safeZoneHeight * 0.5f;
-        }
-
-        static bool IsPointerOverUi()
-        {
-            return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
         }
 
         static float SoftLimit(float value, float negative, float positive)

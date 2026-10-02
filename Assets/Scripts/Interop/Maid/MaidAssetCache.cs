@@ -18,7 +18,9 @@ namespace MaidHome.Interop.Maid
     /// </summary>
     public static class MaidAssetCache
     {
-        public const int FormatVersion = 2;
+        // 4: 主动画不再写 pre_parallel 独占的骨骼（尾巴/长发），常驻层只烘它自己动的骨骼；
+        //    3 及以前是全骨骼铺满的，常驻层会互相盖成静止姿势，必须重转
+        public const int FormatVersion = 4;
         const string BinName = "maid.bin";
         const string ManifestName = "manifest.json";
         const string TextureName = "texture.png";

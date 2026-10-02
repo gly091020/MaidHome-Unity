@@ -118,6 +118,10 @@ namespace MaidHome.Interop.Maid
             clipBuilder.PixelsPerUnit = PixelsPerUnit;
             clipBuilder.SampleRate = SampleRate;
 
+            // pre_parallel 是常驻并行层（尾巴摆动、长发飘），它动的骨骼别的动画一条曲线都不写，
+            // 否则那些骨骼会被主动画的常量曲线钉死，并行层就白播了
+            HashSet<string> parallelBones = CollectParallelBones(animations.Animations);
+
             int emptyClips = 0;
             for (int i = 0; i < animations.Animations.Count; i++)
             {
@@ -128,6 +132,9 @@ namespace MaidHome.Interop.Maid
                     continue;
                 }
 
+                clipBuilder.SkipBones = BedrockAnimation.IsParallelName(animation.Name)
+                    ? NonAuthoredBones(geometry, animation)
+                    : ParallelBonesExcluding(parallelBones, animation);
                 BedrockClipData data = clipBuilder.BuildData(animation, geometry);
                 assets.ClipData.Add(data);
                 assets.Clips.Add(clipBuilder.BuildClip(data));
@@ -140,6 +147,61 @@ namespace MaidHome.Interop.Maid
 
             assets.BuildSeconds = Time.realtimeSinceStartup - start;
             return assets;
+        }
+
+        /// <summary>所有 pre_parallel 动画动过的骨骼，去重后的并集。</summary>
+        static HashSet<string> CollectParallelBones(List<BedrockAnimation> animations)
+        {
+            HashSet<string> bones = new HashSet<string>();
+            for (int i = 0; i < animations.Count; i++)
+            {
+                BedrockAnimation animation = animations[i];
+                if (!BedrockAnimation.IsParallelName(animation.Name))
+                {
+                    continue;
+                }
+
+                for (int b = 0; b < animation.Bones.Count; b++)
+                {
+                    bones.Add(animation.Bones[b].Name);
+                }
+            }
+
+            return bones;
+        }
+
+        /// <summary>
+        /// 常驻动画只烘它自己动过的骨骼。并行层是运行时按轨道直接写骨骼的，
+        /// 铺上没动过的骨骼反而会把别的并行层（比如 pre_parallel0 摆的尾巴）盖成静止姿势。
+        /// </summary>
+        static HashSet<string> NonAuthoredBones(BedrockGeometry geometry, BedrockAnimation animation)
+        {
+            HashSet<string> skip = new HashSet<string>();
+            for (int i = 0; i < geometry.Bones.Count; i++)
+            {
+                string name = geometry.Bones[i].Name;
+                if (animation.FindBone(name) == null)
+                {
+                    skip.Add(name);
+                }
+            }
+
+            return skip;
+        }
+
+        /// <summary>
+        /// 并行层只补主动画没动的骨骼：主动画自己动到的（sleep 会收尾巴、run 会甩尾巴）让它说了算，
+        /// 次序和 TLM 一致。idle / walk 本来就不碰尾巴，所以常驻摆动只在它们身上生效。
+        /// </summary>
+        static HashSet<string> ParallelBonesExcluding(HashSet<string> parallelBones, BedrockAnimation animation)
+        {
+            HashSet<string> skip = new HashSet<string>(parallelBones);
+            for (int i = 0; i < animation.Bones.Count; i++)
+            {
+                skip.Remove(animation.Bones[i].Name);
+            }
+
+            return skip;
         }
 
         /// <summary>

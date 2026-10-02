@@ -14,8 +14,8 @@ namespace MaidHome.Interop.Bedrock
     /// （maid.animation.json 里有 animation_length = 1000 的动画）。被 anim_time 表达式驱动的
     /// 动画除外，那种整条都要铺。
     ///
-    /// 每条 track 都覆盖模型里的**所有**骨骼：动画没动的骨骼写一条常量曲线钉在静止姿势上，
-    /// 否则上一条动画留下的姿势会残留在没被覆盖的骨骼上。
+    /// 每条 track 默认覆盖模型里的**所有**骨骼：动画没动的骨骼写一条常量曲线钉在静止姿势上，
+    /// 否则上一条动画留下的姿势会残留在没被覆盖的骨骼上。例外见 SkipBones。
     /// </summary>
     public sealed class BedrockAnimationClipBuilder
     {
@@ -23,6 +23,12 @@ namespace MaidHome.Interop.Bedrock
         public Vector3 RotationSigns = Vector3.one;
         public BedrockRotationOrder RotationOrder = BedrockRotationOrder.ZYX;
         public float SampleRate = 30f;
+
+        /// <summary>
+        /// 这些骨骼不写曲线。常驻的 pre_parallel 动画独占它们（尾巴摆动、头发飘），
+        /// 别的动画要是也钉一条常量曲线，并行层的值就被压在下面看不出来了。
+        /// </summary>
+        public HashSet<string> SkipBones;
 
         enum Part
         {
@@ -83,6 +89,11 @@ namespace MaidHome.Interop.Bedrock
             for (int i = 0; i < geometry.Bones.Count; i++)
             {
                 BedrockBone bone = geometry.Bones[i];
+                if (SkipBones != null && SkipBones.Contains(bone.Name))
+                {
+                    continue;
+                }
+
                 BedrockAnimationBone animated;
                 if (!animatedBones.TryGetValue(bone.Name, out animated))
                 {

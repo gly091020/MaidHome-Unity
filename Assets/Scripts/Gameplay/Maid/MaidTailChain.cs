@@ -89,63 +89,6 @@ namespace MaidHome.Gameplay.Maid
             pitch = _pitch[0] / Weights[0];
         }
 
-        public Vector3 FocusPoint()
-        {
-            if (_bones.Length == 0)
-            {
-                return Vector3.zero;
-            }
-
-            return _bones[_bones.Length / 2].position;
-        }
-
-        public Renderer FocusRenderer()
-        {
-            for (int i = _bones.Length - 1; i >= 0; i--)
-            {
-                Renderer renderer = _bones[i] != null ? _bones[i].GetComponent<Renderer>() : null;
-                if (renderer != null && renderer.enabled && renderer.gameObject.activeInHierarchy)
-                {
-                    return renderer;
-                }
-            }
-
-            return null;
-        }
-
-        /// 整条尾巴的世界空间包围盒，用来算"框住这条尾巴"需要多大视野
-        public Bounds GetBounds()
-        {
-            Bounds bounds = new Bounds(FocusPoint(), Vector3.one * 0.3f);
-            bool has = false;
-            for (int i = 0; i < _bones.Length; i++)
-            {
-                Transform bone = _bones[i];
-                if (bone == null || !bone.gameObject.activeInHierarchy)
-                {
-                    continue;
-                }
-
-                Renderer renderer = bone.GetComponent<Renderer>();
-                if (renderer == null || !renderer.enabled)
-                {
-                    continue;
-                }
-
-                if (has)
-                {
-                    bounds.Encapsulate(renderer.bounds);
-                }
-                else
-                {
-                    bounds = renderer.bounds;
-                    has = true;
-                }
-            }
-
-            return bounds;
-        }
-
         /// 这条链上有没有"能看见"的几何（被隐藏的骨骼不算，例如酒狐那只小狐狸的尾巴）
         public bool HasVisibleGeometry()
         {

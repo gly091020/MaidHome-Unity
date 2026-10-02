@@ -6,13 +6,17 @@ namespace MaidHome.Core.Storage
 {
     /// <summary>
     /// 数据根目录。存档和缓存分两条线：存档是玩家数据（不许删），缓存是可再生的中间产物。
-    /// 目前还没有从 MC 端下载的流程，先在本地把女仆存档读起来。
+    /// 存档优先放「公共文档目录」（Android 的 /storage/emulated/0/Documents，卸载后还在），
+    /// 拿不到权限就退回应用私有目录 persistentDataPath/saves。
     /// </summary>
     public static class AppPaths
     {
         static string _cacheRoot;
         static string _tmpRoot;
         static string _savesRoot;
+
+        /// <summary>当前存档是不是放在公共目录里（设置界面可以拿它显示状态）</summary>
+        public static bool SavesRootIsPublic { get; private set; }
 
         /// <summary>
         /// Application.persistentDataPath 只能在主线程调，而 Portal 的收文件是后台线程干的，
@@ -24,10 +28,93 @@ namespace MaidHome.Core.Storage
             string persistent = Application.persistentDataPath;
             _cacheRoot = Path.Combine(persistent, "cache");
             _tmpRoot = Path.Combine(persistent, "tmp");
-            _savesRoot = Application.platform == RuntimePlatform.Android
-                // 还没做 SAF / MediaStore 的 Java 桥，公共 Documents 拿不到，先退回应用私有目录
-                ? Path.Combine(persistent, "saves")
-                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MaidHome", "saves");
+            Refresh();
+        }
+
+        /// <summary>
+        /// 重新算一次存档根目录。Android 上玩家在系统设置里给了权限后会从私有目录切到公共
+        /// Documents，切换时把旧目录里缺的文件补拷过去（只补不覆盖、也不删原件）。
+        /// 回到前台 / 授权回来都要调一次；只在主线程调（会走 JNI）。
+        /// </summary>
+        public static void Refresh()
+        {
+            string previous = _savesRoot;
+            string next = ResolveSavesRoot();
+            _savesRoot = next;
+            EnsureDirectory(next);
+
+            if (string.IsNullOrEmpty(previous))
+            {
+                Debug.Log("[存档] 目录：" + next + "｜" + PublicStorage.Describe()
+                    + (SavesRootIsPublic ? "（可用）" : "（拿不到，先用应用私有目录）"));
+                return;
+            }
+
+            if (previous == next)
+            {
+                return;
+            }
+
+            int copied = CopyMissing(previous, next);
+            Debug.Log("[存档] 目录从 " + previous + " 切到 " + next + "，补拷 " + copied + " 个文件");
+        }
+
+        /// <summary>
+        /// 存档根目录：公共目录能写就用它（卸载后还在），否则退回应用私有目录。
+        /// 平台差异全部交给 PublicStorage，这里不看 Application.platform —— Device Simulator
+        /// 会把 platform / isMobilePlatform / isEditor 一起伪装成 Android。
+        /// </summary>
+        static string ResolveSavesRoot()
+        {
+            string documents = PublicStorage.DocumentsRoot;
+            if (!string.IsNullOrEmpty(documents))
+            {
+                SavesRootIsPublic = true;
+                return Path.Combine(documents, "MaidHome", "saves");
+            }
+
+            SavesRootIsPublic = false;
+            return Path.Combine(Application.persistentDataPath, "saves");
+        }
+
+        /// <summary>把 from 里有、to 里没有的文件补过去（存档迁移用，绝不覆盖、也不删）</summary>
+        static int CopyMissing(string from, string to)
+        {
+            if (!Directory.Exists(from))
+            {
+                return 0;
+            }
+
+            int copied = 0;
+            try
+            {
+                string[] files = Directory.GetFiles(from, "*", SearchOption.AllDirectories);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    string relative = files[i].Substring(from.Length)
+                        .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    string target = Path.Combine(to, relative);
+                    if (File.Exists(target))
+                    {
+                        continue;
+                    }
+
+                    string folder = Path.GetDirectoryName(target);
+                    if (!string.IsNullOrEmpty(folder))
+                    {
+                        Directory.CreateDirectory(folder);
+                    }
+
+                    File.Copy(files[i], target, false);
+                    copied++;
+                }
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("[存档] 补拷旧存档失败（不影响继续玩）：" + error.Message);
+            }
+
+            return copied;
         }
 
         public static string CacheRoot

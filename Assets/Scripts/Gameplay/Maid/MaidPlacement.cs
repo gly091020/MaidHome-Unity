@@ -34,16 +34,16 @@ namespace MaidHome.Gameplay.Maid
                 player = root.AddComponent<BedrockAnimationPlayer>();
             }
 
-            player.SetClips(assets.Clips);
+            player.SetClips(assets.Clips, assets.ClipData);
 
             CharacterController controller = root.GetComponent<CharacterController>();
             if (controller == null)
             {
                 controller = root.AddComponent<CharacterController>();
                 // 模型根在脚底，胶囊中心要抬到身高的一半
-                controller.height = 1.75f;
-                controller.radius = 0.3f;
-                controller.center = new Vector3(0f, 0.9f, 0f);
+                controller.height = 2.5f;
+                controller.radius = 0.5f;
+                controller.center = new Vector3(0f, 1.3f, 0f);
                 controller.slopeLimit = 60f;
                 controller.stepOffset = 0.4f;
             }

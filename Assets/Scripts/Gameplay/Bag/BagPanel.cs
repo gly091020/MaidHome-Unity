@@ -1,6 +1,7 @@
+using System.Collections;
 using System.Collections.Generic;
+using MaidHome.Core.Input;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace MaidHome.Gameplay.Bag
@@ -15,11 +16,17 @@ namespace MaidHome.Gameplay.Bag
         [Tooltip("面板里被 Show/Hide 动画控制的对象，建议拖 Slot")]
         [SerializeField] private GameObject _panelRoot;
 
-        [Tooltip("控制 enable 布尔值的 Animator，留空会自动往 Panel Root 的父级找")]
-        [SerializeField] private Animator _animator;
-
-        [Tooltip("BackPack 的 Animator 参数名")]
-        [SerializeField] private string _enableParameter = "enable";
+        [Header("显隐动画（代码驱动，不用 Animator）")]
+        [Tooltip("滑动的对象，留空就用 Panel Root。**场景里摆的位置就是显示位置**")]
+        [SerializeField] private RectTransform _slideRect;
+        [Tooltip("隐藏时相对显示位置挪多少，负 y 是往下")]
+        [SerializeField] private Vector2 _hiddenOffset = new Vector2(0f, -550f);
+        [Tooltip("开关时一起挪的按钮（以前那条动画里的 InvButton），留空就不动它")]
+        [SerializeField] private RectTransform _toggleRect;
+        [Tooltip("那个按钮隐藏时相对显示位置挪多少")]
+        [SerializeField] private Vector2 _hiddenToggleOffset = Vector2.zero;
+        [Tooltip("滑一段多久，0 = 直接开关")]
+        [SerializeField] private float _slideSeconds = 0.2f;
 
         [Tooltip("列表父节点，留空会在面板下自动建一个")]
         [SerializeField] private RectTransform _content;
@@ -44,9 +51,12 @@ namespace MaidHome.Gameplay.Bag
         readonly List<BagItemInfo> _items = new List<BagItemInfo>();
         readonly List<GameObject> _slots = new List<GameObject>();
 
-        BagPlacementController _placement;
+        public BagPlacementController _placement;
         bool _listening;
         bool _visible;
+        Vector2 _shownPosition;
+        Vector2 _shownTogglePosition;
+        Coroutine _slideRoutine;
 
         void Awake()
         {
@@ -68,13 +78,28 @@ namespace MaidHome.Gameplay.Bag
                 _panelRoot = panelObject;
             }
 
-            ResolveAnimator();
+            if (_slideRect == null && _panelRoot != null)
+            {
+                _slideRect = _panelRoot.transform as RectTransform;
+            }
+
+            if (_slideRect != null)
+            {
+                _shownPosition = _slideRect.anchoredPosition;
+            }
+
+            if (_toggleRect != null)
+            {
+                _shownTogglePosition = _toggleRect.anchoredPosition;
+            }
+
             RegisterProviders();
         }
 
         void Start()
         {
-            SetVisible(_startVisible);
+            // 初始状态直接落位，不播一段
+            SetVisible(_startVisible, true);
         }
 
         void OnEnable()
@@ -86,17 +111,18 @@ namespace MaidHome.Gameplay.Bag
 
         void Update()
         {
-            if (!_closeOnEmptyClick || !_visible || !PointerPressed())
+            if (!_closeOnEmptyClick || !_visible)
             {
                 return;
             }
 
-            if (IsPointerOverUi())
+            PointerInput.Pointer pointer = PointerInput.Primary;
+            if (!pointer.Pressed || pointer.OverUi)
             {
                 return;
             }
 
-            if (RectContains(_panelRoot.transform as RectTransform, Input.mousePosition))
+            if (RectContains(_panelRoot.transform as RectTransform, pointer.Position))
             {
                 return;
             }
@@ -121,84 +147,88 @@ namespace MaidHome.Gameplay.Bag
 
         public void SetVisible(bool visible)
         {
+            SetVisible(visible, false);
+        }
+
+        public void SetVisible(bool visible, bool immediate)
+        {
             if (_panelRoot == null)
             {
                 return;
             }
 
             _visible = visible;
-            if (_animator != null && HasBoolParameter(_animator, _enableParameter))
-            {
-                _animator.SetBool(_enableParameter, visible);
-            }
-            else
-            {
-                _panelRoot.SetActive(visible);
-            }
-
             if (visible)
             {
+                _panelRoot.SetActive(true);
                 Refresh();
             }
-        }
 
-        void ResolveAnimator()
-        {
-            if (_animator != null || _panelRoot == null)
+            if (_slideRect == null || immediate || _slideSeconds <= 0.01f)
             {
+                ApplySlide(visible ? 0f : 1f);
+                FinishSlide(visible);
                 return;
             }
 
-            _animator = _panelRoot.GetComponentInParent<Animator>();
-            if (_animator == null && transform.root != null)
+            if (_slideRoutine != null)
             {
-                _animator = transform.root.GetComponentInChildren<Animator>(true);
+                StopCoroutine(_slideRoutine);
             }
+
+            _slideRoutine = StartCoroutine(SlideRoutine(visible));
         }
 
-        static bool HasBoolParameter(Animator animator, string parameter)
+        IEnumerator SlideRoutine(bool visible)
         {
-            if (animator == null || string.IsNullOrEmpty(parameter))
-            {
-                return false;
-            }
+            Vector2 startPosition = _slideRect.anchoredPosition;
+            Vector2 endPosition = visible ? _shownPosition : _shownPosition + _hiddenOffset;
+            Vector2 startToggle = _toggleRect != null ? _toggleRect.anchoredPosition : Vector2.zero;
+            Vector2 endToggle = _toggleRect != null
+                ? (visible ? _shownTogglePosition : _shownTogglePosition + _hiddenToggleOffset)
+                : Vector2.zero;
 
-            AnimatorControllerParameter[] parameters = animator.parameters;
-            for (int i = 0; i < parameters.Length; i++)
+            float length = Mathf.Max(0.01f, _slideSeconds);
+            float elapsed = 0f;
+            while (elapsed < length)
             {
-                if (parameters[i].type == AnimatorControllerParameterType.Bool
-                    && parameters[i].name == parameter)
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / length));
+                _slideRect.anchoredPosition = Vector2.Lerp(startPosition, endPosition, t);
+                if (_toggleRect != null)
                 {
-                    return true;
+                    _toggleRect.anchoredPosition = Vector2.Lerp(startToggle, endToggle, t);
                 }
+
+                yield return null;
             }
 
-            return false;
+            _slideRoutine = null;
+            FinishSlide(visible);
         }
 
-        static bool PointerPressed()
+        void ApplySlide(float t)
         {
-            if (Input.GetMouseButtonDown(0))
+            if (_slideRect != null)
             {
-                return true;
+                _slideRect.anchoredPosition = Vector2.Lerp(_shownPosition,
+                    _shownPosition + _hiddenOffset, t);
             }
 
-            return Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began;
+            if (_toggleRect != null)
+            {
+                _toggleRect.anchoredPosition = Vector2.Lerp(_shownTogglePosition,
+                    _shownTogglePosition + _hiddenToggleOffset, t);
+            }
         }
 
-        static bool IsPointerOverUi()
+        /// <summary>收完才把面板关掉：让它在滑出去的整个过程里都是可见的</summary>
+        void FinishSlide(bool visible)
         {
-            if (EventSystem.current == null)
+            if (!visible && _panelRoot != null)
             {
-                return false;
+                _panelRoot.SetActive(false);
             }
-
-            if (Input.touchCount > 0)
-            {
-                return EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
-            }
-
-            return EventSystem.current.IsPointerOverGameObject();
         }
 
         static bool RectContains(RectTransform rect, Vector2 screenPoint)

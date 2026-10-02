@@ -1,3 +1,4 @@
+using System.Collections;
 using MaidHome.Gameplay.Audio;
 using MaidHome.Gameplay.House;
 using MaidHome.Interop.Bedrock;
@@ -74,6 +75,8 @@ namespace MaidHome.Gameplay.Maid
         float _nextStuckLog;
         bool _paused;
 
+        Coroutine _faceRoutine;
+
         public WanderArea Area
         {
             get { return _area; }
@@ -114,6 +117,7 @@ namespace MaidHome.Gameplay.Maid
 
         void OnDisable()
         {
+            StopFaceDirection();
             EnsureSimpleBedrock();
             if (_simpleBedrock != null)
             {
@@ -162,6 +166,61 @@ namespace MaidHome.Gameplay.Maid
 
             _paused = paused;
             EnterIdle();
+        }
+
+        /// <summary>
+        /// 转过来面朝某个水平方向。暂停时走逻辑直接 return，不会自己转，所以交互里让她转身都走这里。
+        /// 一旦恢复游走就交给 UpdateWalk，不然两边会抢 transform.rotation。
+        /// </summary>
+        public void FaceDirection(Vector3 direction, float seconds)
+        {
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 0.0001f)
+            {
+                return;
+            }
+
+            StopFaceDirection();
+            _faceRoutine = StartCoroutine(FaceDirectionRoutine(
+                Quaternion.LookRotation(direction.normalized, Vector3.up), seconds));
+        }
+
+        public void StopFaceDirection()
+        {
+            if (_faceRoutine != null)
+            {
+                StopCoroutine(_faceRoutine);
+                _faceRoutine = null;
+            }
+        }
+
+        /// <summary>
+        /// 忘掉"当前在播哪条动画"。借别的动画（例如被打）演完之后，让状态机下一次
+        /// 检查时重新播一遍 idle / walk，免得她一直停在借来的那个姿势。
+        /// </summary>
+        public void InvalidateAnimation()
+        {
+            _currentClip = null;
+        }
+
+        IEnumerator FaceDirectionRoutine(Quaternion target, float seconds)
+        {
+            Quaternion start = transform.rotation;
+            float length = Mathf.Max(0.01f, seconds);
+            float elapsed = 0f;
+            while (elapsed < length && _paused)
+            {
+                elapsed += Time.deltaTime;
+                transform.rotation = Quaternion.Slerp(start, target, Mathf.SmoothStep(0f, 1f, elapsed / length));
+                yield return null;
+            }
+
+            if (_paused)
+            {
+                transform.rotation = target;
+            }
+
+            _faceRoutine = null;
         }
 
         void EnterIdle()

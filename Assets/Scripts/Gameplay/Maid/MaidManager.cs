@@ -257,6 +257,31 @@ namespace MaidHome.Gameplay.Maid
             _dirty = false;
         }
 
+        /// <summary>
+        /// 把场上所有放出来的女仆收回背包（切房子用）。位置会先记进存档，
+        /// 收回后她们在背包面板里就能重新放置到新房子里。
+        /// </summary>
+        public int PutAllAway()
+        {
+            EnsureLoaded();
+
+            List<string> placed = new List<string>();
+            foreach (KeyValuePair<string, MaidInstanceState> pair in _states)
+            {
+                if (!pair.Value.InBag)
+                {
+                    placed.Add(pair.Key);
+                }
+            }
+
+            for (int i = 0; i < placed.Count; i++)
+            {
+                TryPutAway(placed[i]);
+            }
+
+            return placed.Count;
+        }
+
         void Flush()
         {
             CapturePlacedPositions();

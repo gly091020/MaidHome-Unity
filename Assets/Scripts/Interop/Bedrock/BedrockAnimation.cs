@@ -47,6 +47,16 @@ namespace MaidHome.Interop.Bedrock
 
             return null;
         }
+
+        /// <summary>
+        /// 常驻动画：TLM 里名字以 pre_parallel 开头的动画（pre_parallel0 管尾巴摆动、pre_parallel1 管长发）
+        /// 永远在播，和主动画并行，别的动画不会去碰它动过的那几根骨骼。
+        /// </summary>
+        public static bool IsParallelName(string name)
+        {
+            return !string.IsNullOrEmpty(name)
+                && name.StartsWith("pre_parallel", System.StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     public sealed class BedrockAnimationSet

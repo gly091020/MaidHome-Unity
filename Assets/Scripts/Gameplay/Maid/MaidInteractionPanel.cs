@@ -7,8 +7,9 @@ using UnityEngine.UI;
 namespace MaidHome.Gameplay.Maid
 {
     /// <summary>
-    /// 女仆交互面板。默认会自动生成一个占位面板显示基础信息，
-    /// 以后设计正式 UI 时把 Panel Root/文字/按钮拖进来覆盖即可。
+    /// 女仆交互面板。想用自定义 UI 就把 Panel Root / 文字 / 按钮拖进来，接上以后布局完全归你的 UI，
+    /// 这里只管开关和填字；不接就自动生成一个占位面板。
+    /// 注意本组件平时是 MaidInteractionController 在运行时 AddComponent 出来的，要接线得在场景里先手动挂一份。
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class MaidInteractionPanel : MonoBehaviour
@@ -16,6 +17,8 @@ namespace MaidHome.Gameplay.Maid
         public event Action CloseRequested;
         /// 点了「摸尾巴」
         public event Action TailRequested;
+        /// 点了「摸脸」
+        public event Action FaceRequested;
 
         [Tooltip("正式面板根节点。留空会自动生成一个占位面板")]
         [SerializeField] private GameObject _panelRoot;
@@ -24,9 +27,13 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private Text _optionsText;
         [SerializeField] private Button _closeButton;
         [SerializeField] private Button _tailButton;
-        [Tooltip("自动把面板贴到屏幕下方")]
+        [Tooltip("「摸脸」按钮。自定义面板留空的话，运行时会照「摸尾巴」按钮的样子自动加一个")]
+        [SerializeField] private Button _faceButton;
+        [Tooltip("只对自动生成的面板生效：贴到屏幕下方。自定义面板不会被动")]
         [SerializeField] private bool _placeAtBottom = true;
         [SerializeField] private float _bottomOffset = 40f;
+
+        bool _generated;
 
         public bool IsOpen
         {
@@ -37,6 +44,11 @@ namespace MaidHome.Gameplay.Maid
         {
             EnsureCreated();
             PlacePanel();
+            if (_panelRoot != null && !_generated && (_titleText == null || _closeButton == null))
+            {
+                Debug.LogWarning("自定义女仆交互面板没接全 Title / Close Button 之类的引用，对应部分不会更新", this);
+            }
+
             if (_closeButton != null)
             {
                 _closeButton.onClick.AddListener(RequestClose);
@@ -45,6 +57,12 @@ namespace MaidHome.Gameplay.Maid
             if (_tailButton != null)
             {
                 _tailButton.onClick.AddListener(RequestTail);
+            }
+
+            EnsureFaceButton();
+            if (_faceButton != null)
+            {
+                _faceButton.onClick.AddListener(RequestFace);
             }
 
             Close();
@@ -62,11 +80,22 @@ namespace MaidHome.Gameplay.Maid
                 _tailButton.onClick.RemoveListener(RequestTail);
             }
 
+            if (_faceButton != null)
+            {
+                _faceButton.onClick.RemoveListener(RequestFace);
+            }
+
             CloseRequested = null;
             TailRequested = null;
+            FaceRequested = null;
         }
 
         public void Open(MaidSaveData maid, bool tailAvailable)
+        {
+            Open(maid, tailAvailable, true);
+        }
+
+        public void Open(MaidSaveData maid, bool tailAvailable, bool faceAvailable)
         {
             EnsureCreated();
             PlacePanel();
@@ -87,20 +116,10 @@ namespace MaidHome.Gameplay.Maid
             }
 
             SetTailAvailable(tailAvailable);
+            SetFaceAvailable(faceAvailable);
             if (_optionsText != null)
             {
-                if (tailAvailable)
-                {
-                    _optionsText.text = "点下面的「摸尾巴」，按住尾巴拖动试试";
-                }
-                else if (maid != null && maid.SimpleBedrockModel)
-                {
-                    _optionsText.text = "方块模型的女仆不支持摸尾巴";
-                }
-                else
-                {
-                    _optionsText.text = "这个模型的骨架里没有尾巴";
-                }
+                _optionsText.text = BuildOptions(maid, tailAvailable, faceAvailable);
             }
         }
 
@@ -110,6 +129,15 @@ namespace MaidHome.Gameplay.Maid
             if (_tailButton != null)
             {
                 _tailButton.interactable = available;
+            }
+        }
+
+        /// 模型没有头骨骼就把「摸脸」灰掉
+        public void SetFaceAvailable(bool available)
+        {
+            if (_faceButton != null)
+            {
+                _faceButton.interactable = available;
             }
         }
 
@@ -135,6 +163,39 @@ namespace MaidHome.Gameplay.Maid
             {
                 TailRequested();
             }
+        }
+
+        public void RequestFace()
+        {
+            if (FaceRequested != null)
+            {
+                FaceRequested();
+            }
+        }
+
+        static string BuildOptions(MaidSaveData maid, bool tailAvailable, bool faceAvailable)
+        {
+            if (tailAvailable && faceAvailable)
+            {
+                return "「摸尾巴」按住尾巴拖；「摸脸」拽耳朵、戳眼睛、横着划脸";
+            }
+
+            if (maid != null && maid.SimpleBedrockModel)
+            {
+                return "方块模型的女仆不支持摸尾巴和摸脸";
+            }
+
+            if (tailAvailable)
+            {
+                return "「摸尾巴」按住尾巴拖动；这个模型摸不了脸";
+            }
+
+            if (faceAvailable)
+            {
+                return "「摸脸」拽耳朵、戳眼睛、横着划脸；这个模型没有尾巴";
+            }
+
+            return "这个模型的骨架里没有尾巴，也没找到头";
         }
 
         static string BuildInfo(MaidSaveData maid)
@@ -181,11 +242,40 @@ namespace MaidHome.Gameplay.Maid
                 new Vector2(110f, 34f));
             _tailButton = CreateButton(panel.transform, "摸尾巴", new Vector2(-100f, -112f),
                 new Vector2(150f, 34f));
+            _faceButton = CreateButton(panel.transform, "摸脸", new Vector2(0f, -112f),
+                new Vector2(90f, 34f));
+            _generated = true;
+        }
+
+        /// <summary>
+        /// 自定义面板没接「摸脸」按钮时，照「摸尾巴」按钮的位置/尺寸自动补一个，
+        /// 摆在面板底部中间（接了自己的按钮就不会走到这里）。
+        /// </summary>
+        void EnsureFaceButton()
+        {
+            if (_faceButton != null || _panelRoot == null)
+            {
+                return;
+            }
+
+            Vector2 position = new Vector2(0f, -112f);
+            Vector2 size = new Vector2(150f, 34f);
+            if (_tailButton != null)
+            {
+                RectTransform tailRect = _tailButton.transform as RectTransform;
+                if (tailRect != null)
+                {
+                    position = new Vector2(0f, tailRect.anchoredPosition.y);
+                    size = tailRect.sizeDelta;
+                }
+            }
+
+            _faceButton = CreateButton(_panelRoot.transform, "摸脸", position, size);
         }
 
         void PlacePanel()
         {
-            if (!_placeAtBottom || _panelRoot == null)
+            if (!_generated || !_placeAtBottom || _panelRoot == null)
             {
                 return;
             }
