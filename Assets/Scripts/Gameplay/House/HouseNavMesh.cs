@@ -98,6 +98,31 @@ namespace MaidHome.Gameplay.House
             }
         }
 
+        /// <summary>
+        /// 房子不销毁、只是被挂起（切走先留着，切回来就不用重新加载）时用：
+        /// 把烘好的 NavMeshData 从 NavMesh 系统里摘掉/装回去，数据本身一直留着。
+        /// </summary>
+        public void SetNavMeshActive(bool active)
+        {
+            if (_data == null)
+            {
+                return;
+            }
+
+            if (active)
+            {
+                if (!_instance.valid)
+                {
+                    _instance = NavMesh.AddNavMeshData(_data);
+                }
+            }
+            else if (_instance.valid)
+            {
+                NavMesh.RemoveNavMeshData(_instance);
+                _instance = default(NavMeshDataInstance);
+            }
+        }
+
         /// <summary>按给定放置方式烘一次，并在探针点验证；验证不过就撤掉并返回 false。</summary>
         bool TryPlace(NavMeshBuildSettings settings, List<NavMeshBuildSource> sources, Bounds bounds,
             Vector3 position, Quaternion rotation, Vector3 probe)

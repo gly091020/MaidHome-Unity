@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using MaidHome.Core.Save;
+using MaidHome.Core.UI;
 using MaidHome.Gameplay.Bag;
 using MaidHome.Gameplay.House;
 using MaidHome.Interop.House;
@@ -15,7 +16,7 @@ namespace MaidHome.Gameplay.Maid
     /// 模型资源取出后一直保留，收回只是 SetActive(false)，所以再次取出不用重新转换。
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class MaidManager : MonoBehaviour, IBagItemProvider
+    public sealed class MaidManager : MonoBehaviour, IBagItemProvider, IBagSlowPlacement
     {
         public static MaidManager Instance { get; private set; }
 
@@ -129,6 +130,58 @@ namespace MaidHome.Gameplay.Maid
             RestorePlacedMaids();
         }
 
+        /// <summary>房子根本加载不出来时调一次：别再干等了，女仆留在背包。</summary>
+        public void OnHouseFailed()
+        {
+            if (_restoreRoutine != null)
+            {
+                StopCoroutine(_restoreRoutine);
+                _restoreRoutine = null;
+            }
+
+            LoadingScreen.Complete(LoadingScreen.MaidJob);
+        }
+
+        /// <summary>
+        /// 那栋房子的存档被删了（HouseSwitcher.Delete）：把住在里面的女仆收回背包、清掉 house_id。
+        /// 不清的话存档里会留着指向"已经删掉的房子"的记录，下次进游戏她们会被判成"在别栋房子里"再收一次。
+        /// </summary>
+        public void OnHouseDeleted(string houseId)
+        {
+            if (string.IsNullOrEmpty(houseId))
+            {
+                return;
+            }
+
+            EnsureLoaded();
+            bool dirty = false;
+            for (int i = 0; i < _maids.Count; i++)
+            {
+                MaidSaveData maid = _maids[i];
+                MaidWorldRecord record = _world.Find(maid.Id);
+                if (record == null || record.HouseId != houseId)
+                {
+                    continue;
+                }
+
+                MaidInstanceState state = FindState(maid.Id);
+                if (state != null && !state.InBag)
+                {
+                    TryPutAway(maid.Id);
+                }
+
+                record.InBag = true;
+                record.HouseId = "";
+                dirty = true;
+            }
+
+            if (dirty)
+            {
+                _dirty = true;
+                SaveNow();
+            }
+        }
+
         public void GetItems(List<BagItemInfo> results)
         {
             EnsureLoaded();
@@ -163,6 +216,17 @@ namespace MaidHome.Gameplay.Maid
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// 放置这一只是不是要现烘（缓存没有或者过期）：资产已经加载过、或者缓存是新鲜的都算快，
+        /// 放置面板只在真的要转换时才亮进度条。第一次转换能有好几秒，不提示的话玩家以为卡死了。
+        /// </summary>
+        public bool NeedsLoading(string id)
+        {
+            EnsureLoaded();
+            MaidInstanceState state = FindState(id);
+            return state != null && state.Assets == null && !MaidAssetCache.IsFresh(state.Save);
         }
 
         public bool TryPlaceAt(string id, Vector3 feet, float yaw)
@@ -344,19 +408,27 @@ namespace MaidHome.Gameplay.Maid
         {
             if (_restored)
             {
+                LoadingScreen.Complete(LoadingScreen.MaidJob);
                 return;
             }
 
             _restored = true;
-            EnsureLoaded();
+            StartCoroutine(RestoreMaidsRoutine());
+        }
 
+        /// <summary>分帧放人：一帧放完的话进度条根本来不及画，多只女仆时也会顿一下。</summary>
+        IEnumerator RestoreMaidsRoutine()
+        {
+            EnsureLoaded();
             if (!HouseContext.HasHouse)
             {
                 Debug.LogWarning("没有加载房子，上次放出来的女仆先留在背包");
-                return;
+                LoadingScreen.Complete(LoadingScreen.MaidJob);
+                yield break;
             }
 
             string houseId = CurrentHouseId();
+            List<MaidSaveData> pending = new List<MaidSaveData>();
             for (int i = 0; i < _maids.Count; i++)
             {
                 MaidSaveData maid = _maids[i];
@@ -372,6 +444,20 @@ namespace MaidHome.Gameplay.Maid
                     continue;
                 }
 
+                pending.Add(maid);
+            }
+
+            if (pending.Count > 0)
+            {
+                // 房子那一步的 job 已经在跑了（权重更大），这里补上女仆这一段，
+                // 进度条会从"正在加载房子"接到"正在恢复女仆"
+                LoadingScreen.Register(LoadingScreen.MaidJob, 1f, "正在恢复女仆…");
+            }
+
+            for (int i = 0; i < pending.Count; i++)
+            {
+                MaidSaveData maid = pending[i];
+                MaidWorldRecord record = _world.Find(maid.Id);
                 Vector3 world = HouseContext.View.transform.TransformPoint(record.Position);
                 Vector3 feet;
                 if (!HouseContext.View.TryGetWalkableFeet(world, out feet))
@@ -387,10 +473,16 @@ namespace MaidHome.Gameplay.Maid
                 }
 
                 TryPlaceAt(maid.Id, feet, record.RotationY);
+                LoadingScreen.Report(LoadingScreen.MaidJob, (i + 1f) / Mathf.Max(1f, pending.Count));
+                if (i + 1 < pending.Count)
+                {
+                    yield return null;
+                }
             }
 
             _dirty = true;
             SaveNow();
+            LoadingScreen.Complete(LoadingScreen.MaidJob);
         }
 
         void CapturePlacedPositions()

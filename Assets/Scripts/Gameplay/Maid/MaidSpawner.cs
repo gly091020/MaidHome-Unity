@@ -56,7 +56,7 @@ namespace MaidHome.Gameplay.Maid
             if (!_placeImmediately)
             {
                 Debug.Log("已加载女仆 " + maid.Name + "（留在背包，没进世界），动画 "
-                    + _assets.Clips.Count + " 条，来自缓存: " + _assets.FromCache);
+                    + _assets.ClipData.Count + " 条，来自缓存: " + _assets.FromCache);
                 return;
             }
 
@@ -72,7 +72,7 @@ namespace MaidHome.Gameplay.Maid
                 wanderer.enabled = _wander;
             }
 
-            Debug.Log("已放置女仆 " + maid.Name + "，动画 " + _assets.Clips.Count + " 条，来自缓存: " + _assets.FromCache);
+            Debug.Log("已放置女仆 " + maid.Name + "，动画 " + _assets.ClipData.Count + " 条，来自缓存: " + _assets.FromCache);
         }
 
         void OnDestroy()

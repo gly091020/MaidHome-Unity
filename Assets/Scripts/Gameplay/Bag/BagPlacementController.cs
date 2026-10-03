@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using MaidHome.Core.Input;
+using MaidHome.Core.UI;
 using MaidHome.Gameplay.House;
 using UnityEngine;
 
@@ -33,6 +35,8 @@ namespace MaidHome.Gameplay.Bag
         bool _valid;
         bool _hasAim;
         bool _aiming;
+        bool _willLoad;
+        string _placingLabel = "正在放置…";
 
         void Awake()
         {
@@ -74,7 +78,8 @@ namespace MaidHome.Gameplay.Bag
             }
         }
 
-        public bool Begin(string kind, string id, Action<Vector3, float> onPlaced, Action onCancel)
+        public bool Begin(string kind, string id, string displayName, bool willLoad,
+            Action<Vector3, float> onPlaced, Action onCancel)
         {
             if (onPlaced == null || !HouseContext.HasHouse)
             {
@@ -82,6 +87,8 @@ namespace MaidHome.Gameplay.Bag
                 return false;
             }
 
+            _placingLabel = string.IsNullOrEmpty(displayName) ? "正在放置…" : "正在放置 " + displayName + "…";
+            _willLoad = willLoad;
             _onPlaced = onPlaced;
             _onCancel = onCancel;
             _yaw = 180f;
@@ -197,13 +204,39 @@ namespace MaidHome.Gameplay.Bag
                 return;
             }
 
+            StartCoroutine(ConfirmRoutine());
+        }
+
+        /// <summary>
+        /// 放置要先把资源准备好（女仆第一次是整条转换，好几秒），所以先把进度条亮出来、
+        /// 让这一帧画完再干活——不然玩家看到的只是画面卡住。
+        /// 协程第一段是同步跑的：Cancel + Register 都在这一帧，下一帧才轮到 callback。
+        /// </summary>
+        IEnumerator ConfirmRoutine()
+        {
             Action<Vector3, float> callback = _onPlaced;
             Vector3 feet = _feet;
             float yaw = _yaw;
             Cancel(false);
-            if (callback != null)
+            if (callback == null)
+            {
+                yield break;
+            }
+
+            if (_willLoad)
+            {
+                // 只有真会卡住的那一下才亮进度条：缓存新鲜时几十毫秒就完了，亮一下反而是闪屏
+                LoadingScreen.Register(LoadingScreen.PlaceJob, 1f, _placingLabel);
+                yield return null;
+            }
+
+            try
             {
                 callback(feet, yaw);
+            }
+            finally
+            {
+                LoadingScreen.Complete(LoadingScreen.PlaceJob);
             }
         }
 

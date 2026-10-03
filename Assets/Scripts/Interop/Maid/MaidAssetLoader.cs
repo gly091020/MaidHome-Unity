@@ -17,6 +17,12 @@ namespace MaidHome.Interop.Maid
         public static float SampleRate = 30f;
         public static bool MergeSharedAnimations = true;
 
+        static MaidAssetLoader()
+        {
+            // 运行时按需烘 clip 只看这一个采样率（只影响 clip.frameRate）
+            BedrockAnimationClipBuilder.DefaultSampleRate = SampleRate;
+        }
+
         /// <summary>模型里约定要藏起来的节点：FOX 是单独的狐狸实体占位，其余是 TLM 的忽略部位。</summary>
         static readonly string[] HiddenNodes =
         {
@@ -137,7 +143,6 @@ namespace MaidHome.Interop.Maid
                     : ParallelBonesExcluding(parallelBones, animation);
                 BedrockClipData data = clipBuilder.BuildData(animation, geometry);
                 assets.ClipData.Add(data);
-                assets.Clips.Add(clipBuilder.BuildClip(data));
             }
 
             if (emptyClips > 0)

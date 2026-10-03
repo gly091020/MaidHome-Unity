@@ -13,6 +13,12 @@ namespace MaidHome.Gameplay.Maid
     [DisallowMultipleComponent]
     public sealed class MaidInteractionController : MonoBehaviour
     {
+        /// <summary>现在是不是点开了一只女仆（看景的拖动/缩放要让位，别和她抢镜头）</summary>
+        public bool IsFocused
+        {
+            get { return _current != null; }
+        }
+
         [SerializeField] private MaidInteractionPanel _panel;
         [SerializeField] private HouseCameraFitter _cameraFitter;
         [FormerlySerializedAs("_")]

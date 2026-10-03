@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using MaidHome.Core.Input;
+using MaidHome.Gameplay.House;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -13,6 +14,8 @@ namespace MaidHome.Gameplay.Bag
     [DisallowMultipleComponent]
     public sealed class BagPanel : MonoBehaviour
     {
+        public static BagPanel Instance { get; private set; }
+
         [Tooltip("面板里被 Show/Hide 动画控制的对象，建议拖 Slot")]
         [SerializeField] private GameObject _panelRoot;
 
@@ -60,6 +63,7 @@ namespace MaidHome.Gameplay.Bag
 
         void Awake()
         {
+            Instance = this;
             _placement = GetComponent<BagPlacementController>();
             if (_placement == null)
             {
@@ -135,6 +139,14 @@ namespace MaidHome.Gameplay.Bag
             Unsubscribe();
         }
 
+        void OnDestroy()
+        {
+            if (Instance == this)
+            {
+                Instance = null;
+            }
+        }
+
         public void Toggle()
         {
             if (_panelRoot == null)
@@ -155,6 +167,12 @@ namespace MaidHome.Gameplay.Bag
             if (_panelRoot == null)
             {
                 return;
+            }
+
+            // 背包和房子面板互斥：展开一个就把另一个收起来，别叠在一起
+            if (visible && HousePanel.Instance != null)
+            {
+                HousePanel.Instance.SetVisible(false);
             }
 
             _visible = visible;
@@ -498,7 +516,9 @@ namespace MaidHome.Gameplay.Bag
 
             bool wasVisible = _visible;
             SetVisible(false);
-            if (!_placement.Begin(item.Kind, item.Id,
+            IBagSlowPlacement slow = provider as IBagSlowPlacement;
+            if (!_placement.Begin(item.Kind, item.Id, item.DisplayName,
+                slow != null && slow.NeedsLoading(item.Id),
                 (feet, yaw) =>
                 {
                     provider.TryPlaceAt(item.Id, feet, yaw);

@@ -10,6 +10,10 @@ namespace MaidHome.Interop.Maid
         public MaidSaveData Maid;
         public GameObject Root;
         public Texture2D Texture;
+        /// <summary>
+        /// 运行时一般是空的：AnimationClip 改由 BedrockAnimationPlayer 在第一次播到某条动画时按需烘
+        /// （一次全烘出来要三十多万次 SetCurve，进游戏会卡几秒）。动画条数看 ClipData。
+        /// </summary>
         public readonly List<AnimationClip> Clips = new List<AnimationClip>();
         public readonly List<BedrockClipData> ClipData = new List<BedrockClipData>();
         /// <summary>按硬编码规则关掉的节点名，给报告用的</summary>

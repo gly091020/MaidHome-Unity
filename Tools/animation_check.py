@@ -222,13 +222,25 @@ def eval_ast(node, context):
 
 
 class MolangContext:
+    # 和 C# 的 MolangContext.FixedValues 保持一致：这些变量没有真数据源，按 TLM 实际取值固定
+    FIXED = {
+        "ysm.food_level": 20.0,
+        "ysm.rendering_in_inventory": 0.0,
+        "ysm.texture_name": 0.0,
+        "query.player_level": 0.0,
+        "query.has_cape": 0.0,
+    }
+
     def __init__(self, anim_time=0.0, variables=None):
         self.anim_time = anim_time
         self.variables = dict(variables or {})
 
     def get(self, name):
-        if name in ("query.anim_time", "query.life_time", "anim_time", "life_time"):
+        if name in ("query.anim_time", "query.life_time", "q.anim_time", "q.life_time",
+                    "anim_time", "life_time"):
             return self.anim_time
+        if name in self.FIXED:
+            return self.FIXED[name]
         return self.variables.get(name, 0.0)
 
 

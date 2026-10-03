@@ -27,13 +27,24 @@ namespace MaidHome.Interop.Bedrock
             public int Clip;
         }
 
+        /// <summary>一条动画：采样数据一直在，AnimationClip 等第一次播到它才建（见 EnsureClip）</summary>
+        sealed class ClipEntry
+        {
+            public string Name;
+            public BedrockClipData Data;
+            public AnimationClip Clip;
+        }
+
         readonly List<BedrockClipData> _parallel = new List<BedrockClipData>();
         readonly List<float> _parallelTimes = new List<float>();
         readonly List<ParallelTrack> _parallelTracks = new List<ParallelTrack>();
-        readonly Dictionary<string, HashSet<string>> _bonePaths = new Dictionary<string, HashSet<string>>();
+        readonly List<ClipEntry> _entries = new List<ClipEntry>();
+        readonly Dictionary<string, ClipEntry> _entryByName = new Dictionary<string, ClipEntry>();
+        readonly List<AnimationClip> _ownedClips = new List<AnimationClip>();
 
         HashSet<string> _mainBones = new HashSet<string>();
         Animation _animation;
+        IList<BedrockClipData> _clipData;
 
         /// <summary>最后 Play 成功的那条 clip 名，摸脸那种"借一段动画演完再换回来"的逻辑要用</summary>
         public string CurrentClipName { get; private set; }
@@ -87,30 +98,142 @@ namespace MaidHome.Interop.Bedrock
             }
         }
 
+        /// <summary>
+        /// 只记下动画的采样数据，**不建 AnimationClip**。
+        /// 一条 10 秒的动画要写几百条曲线，一次全建出来 SetCurve 就是几万个调用（一百多条动画
+        /// 有三十多万个），进游戏会卡好几秒；真正的 clip 等第一次播到它时再建（EnsureClip）。
+        /// clips 里带了现成的 clip 就用现成的（编辑器工具会这么传），名字对不上再按需烘。
+        /// </summary>
         public void SetClips(IList<AnimationClip> clips, IList<BedrockClipData> clipData)
         {
+            // 收回背包再拿出来时会再调一次，数据没换就别动：重加 clip 会把正在播的动画掐掉
+            if (ReferenceEquals(_clipData, clipData) && _entries.Count > 0)
+            {
+                return;
+            }
+
             if (_animation == null)
             {
                 _animation = GetComponent<Animation>();
             }
 
-            for (int i = 0; i < clips.Count; i++)
+            for (int i = 0; i < _entries.Count; i++)
             {
-                AnimationClip clip = clips[i];
-                if (clip == null || string.IsNullOrEmpty(clip.name))
+                ClipEntry old = _entries[i];
+                if (old.Clip != null && _animation != null && _animation.GetClip(old.Clip.name) != null)
                 {
-                    continue;
+                    _animation.RemoveClip(old.Clip.name);
                 }
+            }
 
-                if (_animation.GetClip(clip.name) != null)
+            ReleaseOwnedClips();
+            _entries.Clear();
+            _entryByName.Clear();
+            _clipData = clipData;
+
+            if (clips != null)
+            {
+                for (int i = 0; i < clips.Count; i++)
                 {
-                    _animation.RemoveClip(clip.name);
-                }
+                    AnimationClip clip = clips[i];
+                    if (clip == null || string.IsNullOrEmpty(clip.name))
+                    {
+                        continue;
+                    }
 
-                _animation.AddClip(clip, clip.name);
+                    ClipEntry entry = FindOrAdd(clip.name);
+                    entry.Clip = clip;
+                    if (_animation != null && _animation.GetClip(clip.name) == null)
+                    {
+                        _animation.AddClip(clip, clip.name);
+                    }
+                }
+            }
+
+            if (clipData != null)
+            {
+                for (int i = 0; i < clipData.Count; i++)
+                {
+                    BedrockClipData data = clipData[i];
+                    if (data == null || string.IsNullOrEmpty(data.Name))
+                    {
+                        continue;
+                    }
+
+                    FindOrAdd(data.Name).Data = data;
+                }
             }
 
             BuildParallel(clipData);
+        }
+
+        ClipEntry FindOrAdd(string name)
+        {
+            ClipEntry entry;
+            if (_entryByName.TryGetValue(name, out entry))
+            {
+                return entry;
+            }
+
+            entry = new ClipEntry();
+            entry.Name = name;
+            _entries.Add(entry);
+            _entryByName.Add(name, entry);
+            return entry;
+        }
+
+        /// <summary>第一次播到这条动画时才烘出 AnimationClip，之后一直复用。</summary>
+        public AnimationClip EnsureClip(string name)
+        {
+            ClipEntry entry;
+            return !string.IsNullOrEmpty(name) && _entryByName.TryGetValue(name, out entry)
+                ? EnsureClip(entry)
+                : null;
+        }
+
+        AnimationClip EnsureClip(ClipEntry entry)
+        {
+            if (entry.Clip != null || entry.Data == null)
+            {
+                return entry.Clip;
+            }
+
+            // 采样可能还在缓存文件里，烘之前先读出来
+            entry.Data.EnsureTracks();
+            if (_animation == null)
+            {
+                _animation = GetComponent<Animation>();
+            }
+
+            BedrockAnimationClipBuilder builder = new BedrockAnimationClipBuilder();
+            builder.SampleRate = BedrockAnimationClipBuilder.DefaultSampleRate;
+            entry.Clip = builder.BuildClip(entry.Data);
+            _ownedClips.Add(entry.Clip);
+            if (_animation != null && !string.IsNullOrEmpty(entry.Clip.name)
+                && _animation.GetClip(entry.Clip.name) == null)
+            {
+                _animation.AddClip(entry.Clip, entry.Clip.name);
+            }
+
+            return entry.Clip;
+        }
+
+        void ReleaseOwnedClips()
+        {
+            for (int i = 0; i < _ownedClips.Count; i++)
+            {
+                if (_ownedClips[i] != null)
+                {
+                    Destroy(_ownedClips[i]);
+                }
+            }
+
+            _ownedClips.Clear();
+        }
+
+        void OnDestroy()
+        {
+            ReleaseOwnedClips();
         }
 
         /// <summary>
@@ -122,7 +245,6 @@ namespace MaidHome.Interop.Bedrock
             _parallel.Clear();
             _parallelTimes.Clear();
             _parallelTracks.Clear();
-            _bonePaths.Clear();
             _mainBones = new HashSet<string>();
 
             if (clipData == null)
@@ -133,18 +255,13 @@ namespace MaidHome.Interop.Bedrock
             for (int i = 0; i < clipData.Count; i++)
             {
                 BedrockClipData data = clipData[i];
-                HashSet<string> paths = new HashSet<string>();
-                for (int t = 0; t < data.Tracks.Count; t++)
-                {
-                    paths.Add(data.Tracks[t].Path);
-                }
-
-                _bonePaths[data.Name] = paths;
                 if (!BedrockAnimation.IsParallelName(data.Name))
                 {
                     continue;
                 }
 
+                // 常驻层每帧都要用采样，就地读出来（只有 pre_parallel 那几条，别的动画等播到再说）
+                data.EnsureTracks();
                 int clipIndex = _parallel.Count;
                 _parallel.Add(data);
                 _parallelTimes.Add(0f);
@@ -174,7 +291,7 @@ namespace MaidHome.Interop.Bedrock
 
         public bool HasClip(string name)
         {
-            return _animation != null && _animation.GetClip(name) != null;
+            return !string.IsNullOrEmpty(name) && _entryByName.ContainsKey(name);
         }
 
         public bool Play(string name)
@@ -184,7 +301,13 @@ namespace MaidHome.Interop.Bedrock
                 _animation = GetComponent<Animation>();
             }
 
-            if (_animation == null || _animation.GetClip(name) == null)
+            ClipEntry entry;
+            if (_animation == null || !_entryByName.TryGetValue(name, out entry))
+            {
+                return false;
+            }
+
+            if (EnsureClip(entry) == null || _animation.GetClip(name) == null)
             {
                 return false;
             }
@@ -195,21 +318,27 @@ namespace MaidHome.Interop.Bedrock
             _animation.Play(name);
             CurrentClipName = name;
 
-            HashSet<string> bones;
-            _mainBones = _bonePaths.TryGetValue(name, out bones) ? bones : new HashSet<string>();
+            // 主动画写到的骨骼（EnsureClip 刚保证了采样已经读出来）
+            _mainBones = new HashSet<string>();
+            for (int t = 0; t < entry.Data.Tracks.Count; t++)
+            {
+                _mainBones.Add(entry.Data.Tracks[t].Path);
+            }
+
             return true;
         }
 
         /// <summary>clip 长度（秒），没有这条 clip 返回 0</summary>
         public float ClipLength(string name)
         {
-            if (_animation == null)
+            ClipEntry entry;
+            if (string.IsNullOrEmpty(name) || !_entryByName.TryGetValue(name, out entry))
             {
-                _animation = GetComponent<Animation>();
+                return 0f;
             }
 
-            AnimationClip clip = _animation != null ? _animation.GetClip(name) : null;
-            return clip != null ? clip.length : 0f;
+            // 没建过 clip 也能答：采样数据里的 length 就是烘出来那条 clip 的长度
+            return entry.Clip != null ? entry.Clip.length : entry.Data != null ? entry.Data.Length : 0f;
         }
 
         /// <summary>当前这条 clip 播到第几秒了（借动画演完要接着原来那口气播，用这个）</summary>
@@ -348,15 +477,10 @@ namespace MaidHome.Interop.Bedrock
 
         public List<string> ClipNames()
         {
-            List<string> names = new List<string>();
-            if (_animation == null)
+            List<string> names = new List<string>(_entries.Count);
+            for (int i = 0; i < _entries.Count; i++)
             {
-                return names;
-            }
-
-            foreach (AnimationState state in _animation)
-            {
-                names.Add(state.name);
+                names.Add(_entries[i].Name);
             }
 
             return names;

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -18,9 +19,10 @@ namespace MaidHome.Interop.Maid
     /// </summary>
     public static class MaidAssetCache
     {
+        // 5: Molang 补了 q.anim_time 简写（酒狐的挥雪球动画用它），已烘的采样得重来一遍
         // 4: 主动画不再写 pre_parallel 独占的骨骼（尾巴/长发），常驻层只烘它自己动的骨骼；
         //    3 及以前是全骨骼铺满的，常驻层会互相盖成静止姿势，必须重转
-        public const int FormatVersion = 4;
+        public const int FormatVersion = 5;
         const string BinName = "maid.bin";
         const string ManifestName = "manifest.json";
         const string TextureName = "texture.png";
@@ -132,6 +134,12 @@ namespace MaidHome.Interop.Maid
             string folder = FolderOf(maid);
             AppPaths.EnsureDirectory(folder);
 
+            // 按需加载的动画是从旧文件里读的，必须在删旧文件之前先读出来
+            for (int i = 0; i < assets.ClipData.Count; i++)
+            {
+                assets.ClipData[i].EnsureTracks();
+            }
+
             if (File.Exists(BinPath(maid)))
             {
                 File.Delete(BinPath(maid));
@@ -225,6 +233,8 @@ namespace MaidHome.Interop.Maid
                 for (int i = 0; i < assets.ClipData.Count; i++)
                 {
                     BedrockClipData clip = assets.ClipData[i];
+                    // 按需加载的缓存对象也能安全地再写一遍
+                    clip.EnsureTracks();
                     writer.Write(clip.Name);
                     writer.Write(clip.Length);
                     writer.Write((int)clip.WrapMode);
@@ -272,8 +282,10 @@ namespace MaidHome.Interop.Maid
             assets.FromCache = true;
             assets.Warnings.AddRange(maid.Warnings);
 
-            using (FileStream stream = new FileStream(BinPath(maid), FileMode.Open, FileAccess.Read))
-            using (BinaryReader reader = new BinaryReader(stream))
+            // 只读网格那段，动画的几十 MB 采样先跳过：进游戏只用得上 idle/walk 几条，
+            // 全部读出来要几百毫秒、还要几十 MB 内存。每条动画记下文件偏移，播到再读（见 LazyClipSource）。
+            string binPath = BinPath(maid);
+            using (BinStreamReader reader = new BinStreamReader(binPath, 0))
             {
                 int version = reader.ReadInt32();
                 if (version != FormatVersion)
@@ -329,25 +341,20 @@ namespace MaidHome.Interop.Maid
 
                     Mesh mesh = new Mesh();
                     mesh.name = name + "_mesh";
-                    Vector3[] vertices = ReadVector3Array(reader);
-                    Vector3[] normals = ReadVector3Array(reader);
-                    Vector2[] uvs = ReadVector2Array(reader);
-                    int indexCount = reader.ReadInt32();
-                    int[] triangles = new int[indexCount];
-                    for (int t = 0; t < indexCount; t++)
-                    {
-                        triangles[t] = reader.ReadInt32();
-                    }
+                    Vector3[] vertices = reader.ReadVector3Array();
+                    Vector3[] normals = reader.ReadVector3Array();
+                    Vector2[] uvs = reader.ReadVector2Array();
+                    int[] triangles = reader.ReadIntArray();
 
                     if (vertices.Length > 65000)
                     {
                         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
                     }
 
-                    mesh.SetVertices(new List<Vector3>(vertices));
-                    mesh.SetNormals(new List<Vector3>(normals));
-                    mesh.SetUVs(0, new List<Vector2>(uvs));
-                    mesh.SetTriangles(new List<int>(triangles), 0);
+                    mesh.vertices = vertices;
+                    mesh.normals = normals;
+                    mesh.uv = uvs;
+                    mesh.triangles = triangles;
                     mesh.RecalculateBounds();
 
                     bone.AddComponent<MeshFilter>().sharedMesh = mesh;
@@ -363,43 +370,20 @@ namespace MaidHome.Interop.Maid
                     clip.Name = reader.ReadString();
                     clip.Length = reader.ReadSingle();
                     clip.WrapMode = (WrapMode)reader.ReadInt32();
+                    // 采样区从 trackCount 那个 int 开始（LazyClipSource 会从这儿重读）
+                    long dataOffset = reader.Position;
                     int trackCount = reader.ReadInt32();
                     for (int t = 0; t < trackCount; t++)
                     {
-                        BedrockBoneTrack track = new BedrockBoneTrack();
-                        track.Path = reader.ReadString();
+                        reader.ReadString();
                         int count = reader.ReadInt32();
-                        track.Times = new float[count];
-                        track.Positions = new Vector3[count];
-                        track.Rotations = new Quaternion[count];
-                        track.Scales = new Vector3[count];
-                        for (int k = 0; k < count; k++)
-                        {
-                            track.Times[k] = reader.ReadSingle();
-                        }
-
-                        for (int k = 0; k < count; k++)
-                        {
-                            track.Positions[k] = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                        }
-
-                        for (int k = 0; k < count; k++)
-                        {
-                            track.Rotations[k] = new Quaternion(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                        }
-
-                        for (int k = 0; k < count; k++)
-                        {
-                            track.Scales[k] = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                        }
-
-                        clip.Tracks.Add(track);
+                        // 时间 1 + 位置 3 + 旋转 4 + 缩放 3 = 11 个 float
+                        reader.Skip(44L * count);
                     }
 
+                    LazyClipSource source = new LazyClipSource(binPath, dataOffset);
+                    clip.TrackLoader = source.Load;
                     assets.ClipData.Add(clip);
-                    BedrockAnimationClipBuilder builder = new BedrockAnimationClipBuilder();
-                    builder.SampleRate = MaidAssetLoader.SampleRate;
-                    assets.Clips.Add(builder.BuildClip(clip));
                 }
             }
 
@@ -454,28 +438,321 @@ namespace MaidHome.Interop.Maid
             }
         }
 
-        static Vector3[] ReadVector3Array(BinaryReader reader)
+        /// <summary>
+        /// 按需把一条动画的采样数据读回来。构造函数里记下它在文件里的位置，第一次播到才真去读。
+        /// </summary>
+        sealed class LazyClipSource
         {
-            int count = reader.ReadInt32();
-            Vector3[] values = new Vector3[count];
-            for (int i = 0; i < count; i++)
+            readonly string _path;
+            readonly long _offset;
+
+            public LazyClipSource(string path, long offset)
             {
-                values[i] = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+                _path = path;
+                _offset = offset;
             }
 
-            return values;
+            public void Load(BedrockClipData clip)
+            {
+                using (BinStreamReader reader = new BinStreamReader(_path, _offset))
+                {
+                    int trackCount = reader.ReadInt32();
+                    for (int t = 0; t < trackCount; t++)
+                    {
+                        BedrockBoneTrack track = new BedrockBoneTrack();
+                        track.Path = reader.ReadString();
+                        int count = reader.ReadInt32();
+                        track.Times = new float[count];
+                        track.Positions = new Vector3[count];
+                        track.Rotations = new Quaternion[count];
+                        track.Scales = new Vector3[count];
+                        reader.ReadFloats(track.Times);
+                        reader.ReadVector3Array(track.Positions);
+                        reader.ReadQuaternionArray(track.Rotations);
+                        reader.ReadVector3Array(track.Scales);
+                        clip.Tracks.Add(track);
+                    }
+                }
+            }
         }
 
-        static Vector2[] ReadVector2Array(BinaryReader reader)
+        /// <summary>
+        /// 读 maid.bin 的小工具。不用 BinaryReader 的原因：
+        /// 1) 要能一下子跳过大段采样（`Skip` 直接 seek，不把数据读进来）；
+        /// 2) BinaryReader 读字符串走内部缓冲，`stream.Position` 会跑到前面去，没法算偏移；
+        /// 3) 数组整块读 + BlockCopy 比逐个 ReadSingle 快一个数量级。
+        /// 格式和 WriteBin 一一对应，改了那边必须同步改这里。
+        /// </summary>
+        sealed class BinStreamReader : System.IDisposable
         {
-            int count = reader.ReadInt32();
-            Vector2[] values = new Vector2[count];
-            for (int i = 0; i < count; i++)
+            // 缓冲别开太大：索引阶段每跳过一段采样就会 seek 一次，读进来的缓冲大部分要丢掉
+            // （实测护士酒狐那份 29.7 MB 的缓存：4 KB 缓冲只读 7.6 MB，64 KB 要读 13.6 MB）
+            const int BufferSize = 4 * 1024;
+
+            readonly FileStream _stream;
+            readonly byte[] _buffer = new byte[BufferSize];
+            byte[] _bytes = new byte[4096];
+            float[] _floats = new float[1024];
+            int _start;
+            int _end;
+
+            public BinStreamReader(string path, long offset)
             {
-                values[i] = new Vector2(reader.ReadSingle(), reader.ReadSingle());
+                // bufferSize 1 = 不用 FileStream 自己那层缓冲，读多少就是多少（不然 4 KB 请求会拉来 4 KB 预读）
+                _stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1);
+                _stream.Seek(offset, SeekOrigin.Begin);
+                Position = offset;
             }
 
-            return values;
+            public long Position { get; private set; }
+
+            public void Dispose()
+            {
+                _stream.Dispose();
+            }
+
+            void Fill(int count)
+            {
+                if (_end - _start >= count)
+                {
+                    return;
+                }
+
+                if (count > _buffer.Length)
+                {
+                    count = _buffer.Length;
+                }
+
+                int left = _end - _start;
+                if (left > 0 && _start > 0)
+                {
+                    Buffer.BlockCopy(_buffer, _start, _buffer, 0, left);
+                }
+
+                _start = 0;
+                _end = left;
+                while (_end < count)
+                {
+                    int read = _stream.Read(_buffer, _end, _buffer.Length - _end);
+                    if (read <= 0)
+                    {
+                        throw new EndOfStreamException("女仆缓存文件不完整");
+                    }
+
+                    _end += read;
+                }
+            }
+
+            void ReadBytes(byte[] target, int count)
+            {
+                int copied = 0;
+                while (copied < count)
+                {
+                    Fill(1);
+                    int take = Mathf.Min(count - copied, _end - _start);
+                    Buffer.BlockCopy(_buffer, _start, target, copied, take);
+                    _start += take;
+                    copied += take;
+                    Position += take;
+                }
+            }
+
+            byte[] ByteScratch(int byteCount)
+            {
+                if (_bytes.Length < byteCount)
+                {
+                    _bytes = new byte[byteCount];
+                }
+
+                return _bytes;
+            }
+
+            float[] FloatScratch(int floatCount)
+            {
+                if (_floats.Length < floatCount)
+                {
+                    _floats = new float[floatCount];
+                }
+
+                return _floats;
+            }
+
+            public int ReadInt32()
+            {
+                Fill(4);
+                int value = BitConverter.ToInt32(_buffer, _start);
+                _start += 4;
+                Position += 4;
+                return value;
+            }
+
+            public float ReadSingle()
+            {
+                Fill(4);
+                float value = BitConverter.ToSingle(_buffer, _start);
+                _start += 4;
+                Position += 4;
+                return value;
+            }
+
+            public bool ReadBoolean()
+            {
+                Fill(1);
+                Position += 1;
+                return _buffer[_start++] != 0;
+            }
+
+            /// <summary>BinaryWriter.Write(string)：7 位长度前缀（字节数）+ UTF8</summary>
+            public string ReadString()
+            {
+                int length = 0;
+                int shift = 0;
+                while (true)
+                {
+                    Fill(1);
+                    byte value = _buffer[_start++];
+                    Position += 1;
+                    length |= (value & 0x7F) << shift;
+                    if ((value & 0x80) == 0)
+                    {
+                        break;
+                    }
+
+                    shift += 7;
+                    if (shift > 28)
+                    {
+                        throw new InvalidDataException("女仆缓存字符串长度异常");
+                    }
+                }
+
+                if (length <= 0)
+                {
+                    return "";
+                }
+
+                byte[] bytes = ByteScratch(length);
+                ReadBytes(bytes, length);
+                return Encoding.UTF8.GetString(bytes, 0, length);
+            }
+
+            /// <summary>跳过一段数据。跨度大就直接 seek，别把中间几十 MB 读进内存。</summary>
+            public void Skip(long count)
+            {
+                if (count <= 0)
+                {
+                    return;
+                }
+
+                Position += count;
+                if (count <= _end - _start)
+                {
+                    _start += (int)count;
+                    return;
+                }
+
+                _start = 0;
+                _end = 0;
+                _stream.Seek(Position, SeekOrigin.Begin);
+            }
+
+            public void ReadFloats(float[] target)
+            {
+                int byteCount = target.Length * 4;
+                if (byteCount == 0)
+                {
+                    return;
+                }
+
+                byte[] bytes = ByteScratch(byteCount);
+                ReadBytes(bytes, byteCount);
+                Buffer.BlockCopy(bytes, 0, target, 0, byteCount);
+            }
+
+            public void ReadVector3Array(Vector3[] target)
+            {
+                int count = target.Length;
+                if (count == 0)
+                {
+                    return;
+                }
+
+                int byteCount = count * 12;
+                byte[] bytes = ByteScratch(byteCount);
+                ReadBytes(bytes, byteCount);
+                float[] values = FloatScratch(count * 3);
+                Buffer.BlockCopy(bytes, 0, values, 0, byteCount);
+                for (int i = 0; i < count; i++)
+                {
+                    int offset = i * 3;
+                    target[i] = new Vector3(values[offset], values[offset + 1], values[offset + 2]);
+                }
+            }
+
+            public void ReadQuaternionArray(Quaternion[] target)
+            {
+                int count = target.Length;
+                if (count == 0)
+                {
+                    return;
+                }
+
+                int byteCount = count * 16;
+                byte[] bytes = ByteScratch(byteCount);
+                ReadBytes(bytes, byteCount);
+                float[] values = FloatScratch(count * 4);
+                Buffer.BlockCopy(bytes, 0, values, 0, byteCount);
+                for (int i = 0; i < count; i++)
+                {
+                    int offset = i * 4;
+                    target[i] = new Quaternion(values[offset], values[offset + 1], values[offset + 2],
+                        values[offset + 3]);
+                }
+            }
+
+            public Vector3[] ReadVector3Array()
+            {
+                Vector3[] values = new Vector3[ReadInt32()];
+                ReadVector3Array(values);
+                return values;
+            }
+
+            public Vector2[] ReadVector2Array()
+            {
+                int count = ReadInt32();
+                Vector2[] values = new Vector2[count];
+                if (count == 0)
+                {
+                    return values;
+                }
+
+                int byteCount = count * 8;
+                byte[] bytes = ByteScratch(byteCount);
+                ReadBytes(bytes, byteCount);
+                float[] floats = FloatScratch(count * 2);
+                Buffer.BlockCopy(bytes, 0, floats, 0, byteCount);
+                for (int i = 0; i < count; i++)
+                {
+                    values[i] = new Vector2(floats[i * 2], floats[i * 2 + 1]);
+                }
+
+                return values;
+            }
+
+            public int[] ReadIntArray()
+            {
+                int count = ReadInt32();
+                int[] values = new int[count];
+                int byteCount = count * 4;
+                if (byteCount == 0)
+                {
+                    return values;
+                }
+
+                byte[] bytes = ByteScratch(byteCount);
+                ReadBytes(bytes, byteCount);
+                Buffer.BlockCopy(bytes, 0, values, 0, byteCount);
+                return values;
+            }
         }
 
         // ---------------------------------------------------------------- 贴图 / manifest

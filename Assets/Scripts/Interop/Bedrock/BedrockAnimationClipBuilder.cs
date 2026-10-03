@@ -19,6 +19,9 @@ namespace MaidHome.Interop.Bedrock
     /// </summary>
     public sealed class BedrockAnimationClipBuilder
     {
+        /// <summary>只影响 clip.frameRate；运行时按需建 clip 时拿这个当采样率</summary>
+        public static float DefaultSampleRate = 30f;
+
         public float PixelsPerUnit = 16f;
         public Vector3 RotationSigns = Vector3.one;
         public BedrockRotationOrder RotationOrder = BedrockRotationOrder.ZYX;

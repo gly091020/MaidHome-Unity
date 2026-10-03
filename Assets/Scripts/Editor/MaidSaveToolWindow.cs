@@ -728,11 +728,13 @@ namespace MaidHome.EditorTools
             int keyframes = 0;
             for (int i = 0; i < assets.ClipData.Count; i++)
             {
+                // 运行时是按需读的，编辑器里要统计就得先把采样读全
+                assets.ClipData[i].EnsureTracks();
                 keyframes += assets.ClipData[i].KeyframeCount;
             }
 
             return "骨骼=" + Mathf.Max(0, transforms.Length - 1) + " 网格=" + filters.Length
-                + " 顶点=" + vertices + " 动画=" + assets.Clips.Count + " 关键帧=" + keyframes
+                + " 顶点=" + vertices + " 动画=" + assets.ClipData.Count + " 关键帧=" + keyframes
                 + " 耗时=" + assets.BuildSeconds.ToString("0.00") + "秒"
                 + (assets.FromCache ? "  [来自缓存]" : "");
         }

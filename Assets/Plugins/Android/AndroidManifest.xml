@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.maidhome.game">
+
+    <!-- 存档要写在公共 Documents 里（卸载后还在），APK 分发不发布 Google Play，所以直接用「所有文件访问」 -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <!-- Android 10 及以下退回运行时权限 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- Portal 的 PC <-> 手机传输走 loopback TCP，没有这个权限连 loopback 都会失败 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application android:label="@string/app_name"
+        android:icon="@mipmap/app_icon"
+        android:allowBackup="false"
+        android:theme="@style/UnityThemeSelector">
+        <activity android:name="com.unity3d.player.UnityPlayerActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
+            android:theme="@style/UnityThemeSelector">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+        </activity>
+    </application>
+
+</manifest>

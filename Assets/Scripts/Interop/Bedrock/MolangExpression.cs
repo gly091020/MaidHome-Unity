@@ -11,6 +11,22 @@ namespace MaidHome.Interop.Bedrock
 
         readonly Dictionary<string, float> _variables = new Dictionary<string, float>();
 
+        /// <summary>
+        /// 这些变量工程里没有真的数据源，按女仆模组（TLM）里的实际表现固定掉——**不能一律当 0**：
+        /// `ysm.food_level` 在 TLM 里恒为 20，当 0 会让她一直摆"饿了捂肚子"的姿势。
+        /// `ysm.*` 是 Yes Steve Model 的变量，TLM 没有对应实现，取值是作者在模组侧实测出来的。
+        /// 注意 `ysm.texture_name` 在模组里是**空字符串**，而这套 Molang 只有数值，所以只能当 0
+        /// （`== '某个名字'` 全是 false；反过来 `!= '某个名字'` 也会是 false，这一处是不一致的）。
+        /// </summary>
+        static readonly Dictionary<string, float> FixedValues = new Dictionary<string, float>
+        {
+            { "ysm.food_level", 20f },
+            { "ysm.rendering_in_inventory", 0f },
+            { "ysm.texture_name", 0f },
+            { "query.player_level", 0f },
+            { "query.has_cape", 0f },
+        };
+
         public void Set(string name, float value)
         {
             _variables[name] = value;
@@ -18,9 +34,18 @@ namespace MaidHome.Interop.Bedrock
 
         public float Get(string name)
         {
-            if (name == "query.anim_time" || name == "query.life_time" || name == "anim_time" || name == "life_time")
+            // q. 是 query. 的官方简写，包里很常见（酒狐的 swing$minecraft:snowball 就用了 q.anim_time）
+            if (name == "query.anim_time" || name == "query.life_time"
+                || name == "q.anim_time" || name == "q.life_time"
+                || name == "anim_time" || name == "life_time")
             {
                 return AnimTime;
+            }
+
+            float fixedValue;
+            if (FixedValues.TryGetValue(name, out fixedValue))
+            {
+                return fixedValue;
             }
 
             float value;
@@ -62,6 +87,8 @@ namespace MaidHome.Interop.Bedrock
             { "math.lerp", a => Arg(a, 0) + (Arg(a, 1) - Arg(a, 0)) * Arg(a, 2) },
             { "math.hermite_blend", a => Arg(a, 0) * Arg(a, 0) * (3f - 2f * Arg(a, 0)) },
             { "math.random", a => 0f },
+            // TLM 里这个函数是空的（女仆模组没有 YSM 那套骨骼绝对 pivot），按 0 处理且不刷警告
+            { "ysm.bone_pivot_abs", a => 0f },
         };
 
         Func<MolangContext, float> _root;
