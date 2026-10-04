@@ -19,6 +19,46 @@ namespace MaidHome.Gameplay.Audio
 
         static readonly Regex TrailingDigits = new Regex("\\d+$", RegexOptions.Compiled);
 
+        static string _indexedSavesRoot;
+
+        /// <summary>
+        /// 启动预热：先把索引扫出来，别等第一次播放声音时才去扫盘。
+        /// 存档根目录变了（安卓授权后从应用私有目录切到公共 Documents）也要重建。
+        /// </summary>
+        public static void RefreshIndex()
+        {
+            string savesRoot = AppPaths.SavesRoot;
+            if (string.Equals(savesRoot, _indexedSavesRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _indexedSavesRoot = savesRoot;
+            Packs.Clear();
+
+            string[] ids = ListPackIds();
+            for (int i = 0; i < ids.Length; i++)
+            {
+                Get(ids[i]);
+            }
+        }
+
+        /// <summary>任取一条现成的音频路径（启动预热解码用）</summary>
+        public static string PickAnyPath()
+        {
+            string[] ids = ListPackIds();
+            for (int i = 0; i < ids.Length; i++)
+            {
+                string path = Get(ids[i]).FirstPath;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    return path;
+                }
+            }
+
+            return null;
+        }
+
         public static MaidSoundPack Get(string packId)
         {
             if (string.IsNullOrEmpty(packId))
@@ -88,6 +128,7 @@ namespace MaidHome.Gameplay.Audio
         public static void Reload()
         {
             Packs.Clear();
+            _indexedSavesRoot = null;
         }
 
         static MaidSoundPack Build(string packId)

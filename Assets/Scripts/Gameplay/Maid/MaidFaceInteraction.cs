@@ -215,6 +215,8 @@ namespace MaidHome.Gameplay.Maid
         {
             public int FingerId;
             public List<Transform> Chain;
+            /// <summary>抓的时候记下播放器，松手后要把它那边的接管标记清掉</summary>
+            public BedrockAnimationPlayer Player;
             public int[] Axes;
             public Vector3[] RestScales;
             public Quaternion[] Animated;
@@ -842,6 +844,16 @@ namespace MaidHome.Gameplay.Maid
             }
 
             ear.Origin = pointer.Position;
+            // 常驻并行层（pre_parallel*）也写耳朵，不拦住的话拽出来的姿势会被它每帧盖掉
+            ear.Player = _agent != null ? _agent.GetComponent<BedrockAnimationPlayer>() : null;
+            if (ear.Player != null)
+            {
+                for (int i = 0; i < ear.Chain.Count; i++)
+                {
+                    ear.Player.SetBoneSuppressed(ear.Chain[i], true);
+                }
+            }
+
             if (left)
             {
                 _leftEar = ear;
@@ -906,8 +918,8 @@ namespace MaidHome.Gameplay.Maid
         {
             RestoreEarScale(_leftEar);
             RestoreEarScale(_rightEar);
-            _leftEar = null;
-            _rightEar = null;
+            DropEar(_leftEar);
+            DropEar(_rightEar);
         }
 
         void DropEar(EarGrab ear)
@@ -915,6 +927,14 @@ namespace MaidHome.Gameplay.Maid
             if (ear == null)
             {
                 return;
+            }
+
+            if (ear.Player != null && ear.Chain != null)
+            {
+                for (int i = 0; i < ear.Chain.Count; i++)
+                {
+                    ear.Player.SetBoneSuppressed(ear.Chain[i], false);
+                }
             }
 
             if (_leftEar == ear)

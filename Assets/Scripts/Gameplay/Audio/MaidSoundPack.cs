@@ -28,6 +28,23 @@ namespace MaidHome.Gameplay.Audio
             get { return _events.Count; }
         }
 
+        /// <summary>索引里第一条音频路径（启动预热用）</summary>
+        public string FirstPath
+        {
+            get
+            {
+                foreach (List<string> paths in _events.Values)
+                {
+                    if (paths.Count > 0)
+                    {
+                        return paths[0];
+                    }
+                }
+
+                return null;
+            }
+        }
+
         public bool TryGet(string eventId, out List<string> paths)
         {
             return _events.TryGetValue(eventId, out paths);

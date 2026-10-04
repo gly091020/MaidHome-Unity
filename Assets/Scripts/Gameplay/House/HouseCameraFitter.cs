@@ -67,6 +67,34 @@ namespace MaidHome.Gameplay.House
             get { return _hasHouseView && _moveRoutine == null; }
         }
 
+        /// <summary>取景动画还在跑（跑的期间每次 ApplyView 都会把相机按回正交）</summary>
+        public bool IsMoving
+        {
+            get { return _moveRoutine != null; }
+        }
+
+        /// <summary>
+        /// 临时切成透视（喂蛋糕的中/重挡要用），传 &lt;= 0 切回正交。
+        /// 注意：这套取景只会算正交 size，而且每次 ApplyView 都会把相机设回正交，
+        /// 所以要在取景动画停下来之后再切（不然会被它一路按回去），切透视期间也别再重新取景。
+        /// </summary>
+        public void SetPerspective(float fieldOfView)
+        {
+            if (_camera == null)
+            {
+                return;
+            }
+
+            if (fieldOfView <= 0f)
+            {
+                _camera.orthographic = true;
+                return;
+            }
+
+            _camera.orthographic = false;
+            _camera.fieldOfView = fieldOfView;
+        }
+
         /// <summary>
         /// 整个相机在世界上额外抬高多少（切场景过场用：先升到天上、切完再降下来）。
         /// 它是加在**每次 ApplyView** 上的，所以过场期间房子/女仆重新取景不会把相机拽回地面。

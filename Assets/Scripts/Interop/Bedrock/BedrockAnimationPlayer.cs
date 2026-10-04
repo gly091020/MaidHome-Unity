@@ -85,6 +85,55 @@ namespace MaidHome.Interop.Bedrock
 
         bool _parallelEnabled = true;
 
+        /// <summary>
+        /// 被外部系统接管的骨骼路径（摸脸拽耳朵、喂蛋糕扭头这类叠姿势的玩法）。
+        /// 常驻层也在 LateUpdate 里按轨道写骨骼，两个脚本的先后顺序不保证，谁后写谁赢；
+        /// 常驻层写到的耳朵会把拽出来的姿势整条盖掉（表现为"耳朵拽着不动"），所以外部接管期间
+        /// 这里直接跳过这几条轨道。
+        /// </summary>
+        readonly HashSet<string> _suppressed = new HashSet<string>();
+
+        /// <summary>
+        /// 告诉常驻层"这根骨骼这几帧归别人管"。传进来的骨骼必须在这个播放器底下。
+        /// 外部接管开始时置 true，结束时（包括退出玩法）必须置回 false，否则耳朵会一直不摆。
+        /// </summary>
+        public void SetBoneSuppressed(Transform bone, bool suppressed)
+        {
+            string path = BonePath(bone);
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
+            if (suppressed)
+            {
+                _suppressed.Add(path);
+            }
+            else
+            {
+                _suppressed.Remove(path);
+            }
+        }
+
+        /// <summary>轨道路径和 BuildPath 一样是相对本对象的（"GuiRoot/MRoot/..."），这里反过来拼回去</summary>
+        string BonePath(Transform bone)
+        {
+            if (bone == null || bone == transform)
+            {
+                return null;
+            }
+
+            string path = bone.name;
+            Transform current = bone.parent;
+            for (int guard = 0; current != null && current != transform && guard < 64; guard++)
+            {
+                path = current.name + "/" + path;
+                current = current.parent;
+            }
+
+            return current == transform ? path : null;
+        }
+
         void Awake()
         {
             _animation = GetComponent<Animation>();
@@ -246,6 +295,7 @@ namespace MaidHome.Interop.Bedrock
             _parallelTimes.Clear();
             _parallelTracks.Clear();
             _mainBones = new HashSet<string>();
+            _suppressed.Clear();
 
             if (clipData == null)
             {
@@ -399,9 +449,9 @@ namespace MaidHome.Interop.Bedrock
             for (int i = 0; i < _parallelTracks.Count; i++)
             {
                 ParallelTrack entry = _parallelTracks[i];
-                if (_mainBones.Contains(entry.Track.Path))
+                if (_mainBones.Contains(entry.Track.Path) || _suppressed.Contains(entry.Track.Path))
                 {
-                    // 主动画这几帧自己动这根骨骼，让给它
+                    // 主动画 / 外部玩法这几帧自己动这根骨骼，让给它
                     continue;
                 }
 

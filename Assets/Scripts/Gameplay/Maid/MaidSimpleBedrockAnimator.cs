@@ -27,6 +27,10 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _legSwing = 0.3f;
         [SerializeField] private float _armSway = 0.05f;
 
+        [Header("吃东西")]
+        [Tooltip("被喂东西时右臂往前抬多少度（简单模型没有吃东西动画，用这个示意）。方向反了就改成负数")]
+        [SerializeField] private float _eatArmDegrees = 85f;
+
         Transform _armLeft;
         Transform _armRight;
         Transform _legLeft;
@@ -42,6 +46,8 @@ namespace MaidHome.Gameplay.Maid
         float _limbSwingAmount;
         float _age;
         bool _moving;
+        float _eatRemaining;
+        float _eatTotal;
 
         void Awake()
         {
@@ -73,6 +79,19 @@ namespace MaidHome.Gameplay.Maid
             _moving = moving;
         }
 
+        /// <summary>抬手吃东西的动作演 seconds 秒（只有一个抬起再放下的弧线）</summary>
+        public void PlayEat(float seconds)
+        {
+            _eatTotal = Mathf.Max(0.2f, seconds);
+            _eatRemaining = _eatTotal;
+        }
+
+        public void CancelEat()
+        {
+            _eatRemaining = 0f;
+            _eatTotal = 0f;
+        }
+
         void LateUpdate()
         {
             float deltaTime = Time.deltaTime;
@@ -98,6 +117,11 @@ namespace MaidHome.Gameplay.Maid
             }
 
             _age += deltaTime;
+            if (_eatRemaining > 0f)
+            {
+                _eatRemaining = Mathf.Max(0f, _eatRemaining - deltaTime);
+            }
+
             Apply();
         }
 
@@ -107,8 +131,16 @@ namespace MaidHome.Gameplay.Maid
             // TLM: cos(ageInTicks * 0.05)，ageInTicks = 秒 * 20
             float sway = Mathf.Cos(_age) * _armSway;
 
+            // 吃东西：右臂抬起来再放下，抬到最高在中间
+            float eat = 0f;
+            if (_eatTotal > 0.0001f && _eatRemaining > 0f)
+            {
+                float t = 1f - Mathf.Clamp01(_eatRemaining / _eatTotal);
+                eat = Mathf.Sin(t * Mathf.PI) * _eatArmDegrees * Mathf.Deg2Rad;
+            }
+
             ApplyDelta(_armLeft, _armLeftRest, new Vector3(-swing * _armSwing, 0f, sway));
-            ApplyDelta(_armRight, _armRightRest, new Vector3(swing * _armSwing, 0f, -sway));
+            ApplyDelta(_armRight, _armRightRest, new Vector3(swing * _armSwing + eat, 0f, -sway));
             ApplyDelta(_legLeft, _legLeftRest, new Vector3(swing * _legSwing, 0f, 0f));
             ApplyDelta(_legRight, _legRightRest, new Vector3(-swing * _legSwing, 0f, 0f));
         }

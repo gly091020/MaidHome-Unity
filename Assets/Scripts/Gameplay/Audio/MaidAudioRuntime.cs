@@ -37,6 +37,7 @@ namespace MaidHome.Gameplay.Audio
         readonly HashSet<string> _warned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         AudioSource _previewSource;
+        bool _warmUpStarted;
 
         void Awake()
         {
@@ -48,6 +49,69 @@ namespace MaidHome.Gameplay.Audio
 
             _instance = this;
             DontDestroyOnLoad(gameObject);
+            StartWarmUp();
+        }
+
+        /// <summary>
+        /// 音频设备、解码器、声音包索引都是"第一次用到才初始化"，第一次播放声音会卡一下。
+        /// 启动时就建出来，把这些一次性开销塞进加载流程里（Attribute 保证开场就执行一次）。
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void Bootstrap()
+        {
+            Instance.StartWarmUp();
+        }
+
+        void StartWarmUp()
+        {
+            if (_warmUpStarted)
+            {
+                return;
+            }
+
+            _warmUpStarted = true;
+            StartCoroutine(WarmUpRoutine());
+        }
+
+        void Update()
+        {
+            MaidSoundLibrary.RefreshIndex();
+        }
+
+        IEnumerator WarmUpRoutine()
+        {
+            GameObject holder = new GameObject("MaidAudioWarmup");
+            holder.transform.SetParent(transform, false);
+            AudioSource source = holder.AddComponent<AudioSource>();
+            source.playOnAwake = false;
+            source.spatialBlend = 0f;
+            source.volume = 0f;
+
+            // 音频输出设备是第一次播放时才初始化的，先放一段静音把它唤醒
+            AudioClip silence = AudioClip.Create("maidhome_warmup", 256, 1, 44100, false);
+            silence.SetData(new float[256], 0);
+            source.clip = silence;
+            source.Play();
+            // 顺手预热采样放大那条路（GetData / AudioClip.Create / SetData）
+            AudioGain.Amplify(silence, 2f);
+
+            yield return null;
+            source.Stop();
+            Destroy(holder);
+            Destroy(silence);
+
+            MaidSoundLibrary.RefreshIndex();
+
+            // 先随便解码一条：解码器插件和 UnityWebRequest 的首次初始化也在这一步
+            string probe = MaidSoundLibrary.PickAnyPath();
+            if (!string.IsNullOrEmpty(probe) && File.Exists(probe))
+            {
+                LoadClip(probe, WarmUpClipReady);
+            }
+        }
+
+        static void WarmUpClipReady(AudioClip clip)
+        {
         }
 
         void OnDestroy()

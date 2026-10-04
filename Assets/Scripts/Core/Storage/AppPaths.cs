@@ -42,6 +42,7 @@ namespace MaidHome.Core.Storage
             string next = ResolveSavesRoot();
             _savesRoot = next;
             EnsureDirectory(next);
+            EnsureNoMedia(next);
 
             if (string.IsNullOrEmpty(previous))
             {
@@ -180,6 +181,26 @@ namespace MaidHome.Core.Storage
             if (!string.IsNullOrEmpty(path) && !Directory.Exists(path))
             {
                 Directory.CreateDirectory(path);
+            }
+        }
+
+        /// <summary>
+        /// Android 的相册/音乐播放器会扫公共目录，女仆贴图一张张冒到用户相册里是要被骂的。
+        /// 存档根目录放一个 .nomedia，MediaScanner 会连着跳过整棵子树；Windows 上放着也无害。
+        /// </summary>
+        static void EnsureNoMedia(string root)
+        {
+            try
+            {
+                string marker = Path.Combine(root, ".nomedia");
+                if (!File.Exists(marker))
+                {
+                    File.WriteAllText(marker, "");
+                }
+            }
+            catch (Exception)
+            {
+                // 只是给扫描器看的标记，写不进去不影响存档
             }
         }
     }

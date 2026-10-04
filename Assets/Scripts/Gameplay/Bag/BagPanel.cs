@@ -57,6 +57,11 @@ namespace MaidHome.Gameplay.Bag
         public BagPlacementController _placement;
         bool _listening;
         bool _visible;
+
+        public bool IsVisible
+        {
+            get { return _visible; }
+        }
         Vector2 _shownPosition;
         Vector2 _shownTogglePosition;
         Coroutine _slideRoutine;
@@ -170,7 +175,9 @@ namespace MaidHome.Gameplay.Bag
             }
 
             // 背包和房子面板互斥：展开一个就把另一个收起来，别叠在一起
-            if (visible && HousePanel.Instance != null)
+            // （已经收起来的就别再收一次：那个面板的物体是关着的，起不了协程，会报
+            //   "Coroutine couldn't be started because the game object is inactive"）
+            if (visible && HousePanel.Instance != null && HousePanel.Instance.IsVisible)
             {
                 HousePanel.Instance.SetVisible(false);
             }
@@ -184,6 +191,14 @@ namespace MaidHome.Gameplay.Bag
 
             if (_slideRect == null || immediate || _slideSeconds <= 0.01f)
             {
+                ApplySlide(visible ? 0f : 1f);
+                FinishSlide(visible);
+                return;
+            }
+
+            if (!_panelRoot.activeInHierarchy)
+            {
+                // 面板本来就是关着的（或者整个 Canvas 关着），没得滑：直接落位
                 ApplySlide(visible ? 0f : 1f);
                 FinishSlide(visible);
                 return;

@@ -19,6 +19,8 @@ namespace MaidHome.Gameplay.Maid
         public event Action TailRequested;
         /// 点了「摸脸」
         public event Action FaceRequested;
+        /// 点了「喂蛋糕」
+        public event Action FeedRequested;
 
         [Tooltip("正式面板根节点。留空会自动生成一个占位面板")]
         [SerializeField] private GameObject _panelRoot;
@@ -29,6 +31,8 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private Button _tailButton;
         [Tooltip("「摸脸」按钮。自定义面板留空的话，运行时会照「摸尾巴」按钮的样子自动加一个")]
         [SerializeField] private Button _faceButton;
+        [Tooltip("「喂蛋糕」按钮。自定义面板留空的话，运行时会在「摸脸」右边自动加一个")]
+        [SerializeField] private Button _feedButton;
         [Tooltip("只对自动生成的面板生效：贴到屏幕下方。自定义面板不会被动")]
         [SerializeField] private bool _placeAtBottom = true;
         [SerializeField] private float _bottomOffset = 40f;
@@ -65,6 +69,12 @@ namespace MaidHome.Gameplay.Maid
                 _faceButton.onClick.AddListener(RequestFace);
             }
 
+            EnsureFeedButton();
+            if (_feedButton != null)
+            {
+                _feedButton.onClick.AddListener(RequestFeed);
+            }
+
             Close();
         }
 
@@ -85,17 +95,28 @@ namespace MaidHome.Gameplay.Maid
                 _faceButton.onClick.RemoveListener(RequestFace);
             }
 
+            if (_feedButton != null)
+            {
+                _feedButton.onClick.RemoveListener(RequestFeed);
+            }
+
             CloseRequested = null;
             TailRequested = null;
             FaceRequested = null;
+            FeedRequested = null;
         }
 
         public void Open(MaidSaveData maid, bool tailAvailable)
         {
-            Open(maid, tailAvailable, true);
+            Open(maid, tailAvailable, true, true);
         }
 
         public void Open(MaidSaveData maid, bool tailAvailable, bool faceAvailable)
+        {
+            Open(maid, tailAvailable, faceAvailable, true);
+        }
+
+        public void Open(MaidSaveData maid, bool tailAvailable, bool faceAvailable, bool feedAvailable)
         {
             EnsureCreated();
             PlacePanel();
@@ -117,9 +138,10 @@ namespace MaidHome.Gameplay.Maid
 
             SetTailAvailable(tailAvailable);
             SetFaceAvailable(faceAvailable);
+            SetFeedAvailable(feedAvailable);
             if (_optionsText != null)
             {
-                _optionsText.text = BuildOptions(maid, tailAvailable, faceAvailable);
+                _optionsText.text = BuildOptions(maid, tailAvailable, faceAvailable, feedAvailable);
             }
         }
 
@@ -138,6 +160,15 @@ namespace MaidHome.Gameplay.Maid
             if (_faceButton != null)
             {
                 _faceButton.interactable = available;
+            }
+        }
+
+        /// <summary>喂蛋糕对模型没要求，一般都给点</summary>
+        public void SetFeedAvailable(bool available)
+        {
+            if (_feedButton != null)
+            {
+                _feedButton.interactable = available;
             }
         }
 
@@ -173,29 +204,39 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
-        static string BuildOptions(MaidSaveData maid, bool tailAvailable, bool faceAvailable)
+        public void RequestFeed()
         {
+            if (FeedRequested != null)
+            {
+                FeedRequested();
+            }
+        }
+
+        static string BuildOptions(MaidSaveData maid, bool tailAvailable, bool faceAvailable, bool feedAvailable)
+        {
+            string body;
             if (tailAvailable && faceAvailable)
             {
-                return "「摸尾巴」按住尾巴拖；「摸脸」拽耳朵、戳眼睛、横着划脸";
+                body = "「摸尾巴」按住尾巴拖；「摸脸」拽耳朵、戳眼睛、横着划脸";
             }
-
-            if (maid != null && maid.SimpleBedrockModel)
+            else if (maid != null && maid.SimpleBedrockModel)
             {
-                return "方块模型的女仆不支持摸尾巴和摸脸";
+                body = "方块模型的女仆不支持摸尾巴和摸脸";
             }
-
-            if (tailAvailable)
+            else if (tailAvailable)
             {
-                return "「摸尾巴」按住尾巴拖动；这个模型摸不了脸";
+                body = "「摸尾巴」按住尾巴拖动；这个模型摸不了脸";
             }
-
-            if (faceAvailable)
+            else if (faceAvailable)
             {
-                return "「摸脸」拽耳朵、戳眼睛、横着划脸；这个模型没有尾巴";
+                body = "「摸脸」拽耳朵、戳眼睛、横着划脸；这个模型没有尾巴";
+            }
+            else
+            {
+                body = "这个模型的骨架里没有尾巴，也没找到头";
             }
 
-            return "这个模型的骨架里没有尾巴，也没找到头";
+            return feedAvailable ? "「喂蛋糕」选挡位喂她吃东西\n" + body : body;
         }
 
         static string BuildInfo(MaidSaveData maid)
@@ -227,23 +268,25 @@ namespace MaidHome.Gameplay.Maid
             panelRect.anchorMax = new Vector2(0.5f, 0.5f);
             panelRect.pivot = new Vector2(0.5f, 0.5f);
             panelRect.anchoredPosition = Vector2.zero;
-            panelRect.sizeDelta = new Vector2(440f, 280f);
+            panelRect.sizeDelta = new Vector2(560f, 300f);
             Image background = panel.GetComponent<Image>();
             background.color = new Color(0.08f, 0.08f, 0.1f, 0.92f);
 
             _panelRoot = panel;
-            _titleText = CreateText(panel.transform, "Title", new Vector2(0f, 108f), new Vector2(400f, 40f),
+            _titleText = CreateText(panel.transform, "Title", new Vector2(0f, 118f), new Vector2(520f, 40f),
                 22, TextAnchor.MiddleCenter);
-            _infoText = CreateText(panel.transform, "Info", new Vector2(0f, 18f), new Vector2(400f, 120f),
+            _infoText = CreateText(panel.transform, "Info", new Vector2(0f, 28f), new Vector2(520f, 120f),
                 16, TextAnchor.UpperLeft);
-            _optionsText = CreateText(panel.transform, "Options", new Vector2(0f, -78f), new Vector2(400f, 60f),
+            _optionsText = CreateText(panel.transform, "Options", new Vector2(0f, -68f), new Vector2(520f, 60f),
                 16, TextAnchor.UpperLeft);
-            _closeButton = CreateButton(panel.transform, "关闭", new Vector2(160f, -112f),
-                new Vector2(110f, 34f));
-            _tailButton = CreateButton(panel.transform, "摸尾巴", new Vector2(-100f, -112f),
-                new Vector2(150f, 34f));
-            _faceButton = CreateButton(panel.transform, "摸脸", new Vector2(0f, -112f),
+            _closeButton = CreateButton(panel.transform, "关闭", new Vector2(225f, -122f),
                 new Vector2(90f, 34f));
+            _tailButton = CreateButton(panel.transform, "摸尾巴", new Vector2(-190f, -122f),
+                new Vector2(140f, 34f));
+            _faceButton = CreateButton(panel.transform, "摸脸", new Vector2(-30f, -122f),
+                new Vector2(110f, 34f));
+            _feedButton = CreateButton(panel.transform, "喂蛋糕", new Vector2(105f, -122f),
+                new Vector2(130f, 34f));
             _generated = true;
         }
 
@@ -271,6 +314,32 @@ namespace MaidHome.Gameplay.Maid
             }
 
             _faceButton = CreateButton(_panelRoot.transform, "摸脸", position, size);
+        }
+
+        /// <summary>
+        /// 自定义面板没接「喂蛋糕」按钮时自动补一个：挂在面板上沿外面。
+        /// 自定义面板底下那排通常已经排满了（摸尾巴 / 摸脸 / 关闭），压在别人的按钮上更糟，
+        /// 所以兜底放面板上方，然后提示玩家自己加一个接到本字段。
+        /// </summary>
+        void EnsureFeedButton()
+        {
+            if (_feedButton != null || _panelRoot == null)
+            {
+                return;
+            }
+
+            _feedButton = CreateButton(_panelRoot.transform, "喂蛋糕", Vector2.zero, new Vector2(200f, 60f));
+            RectTransform rect = _feedButton.transform as RectTransform;
+            if (rect != null)
+            {
+                rect.anchorMin = new Vector2(0f, 1f);
+                rect.anchorMax = new Vector2(0f, 1f);
+                rect.pivot = new Vector2(0f, 0f);
+                rect.anchoredPosition = new Vector2(24f, 8f);
+            }
+
+            Debug.LogWarning("自定义女仆交互面板没接「喂蛋糕」按钮，先自动挂在面板上沿了；"
+                + "建议自己加一个按钮接到 MaidInteractionPanel 的 Feed Button", this);
         }
 
         void PlacePanel()

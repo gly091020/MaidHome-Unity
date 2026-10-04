@@ -36,12 +36,16 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _faceFocusPitchDegrees = -1f;
         [Tooltip("摸脸模式取景中心往上抬多少（按头部包围盒半高）。-1 = 沿用 HouseCameraFitter 的设置")]
         [SerializeField] private float _faceFocusLookHeightRatio = -1f;
+        [Tooltip("喂蛋糕选中/重挡时临时把相机切成透视的 fov（切回轻挡或退出时恢复正交）")]
+        [SerializeField] private float _feedPerspectiveFov = 15f;
         [SerializeField] private float _clickDistance = 300f;
         [SerializeField] private LayerMask _clickMask = ~0;
 
         MaidAgent _current;
         MaidTailInteraction _tail;
         MaidFaceInteraction _face;
+        MaidFeedInteraction _feed;
+        float _appliedFeedFov = -1f;
 
         void Awake()
         {
@@ -72,11 +76,49 @@ namespace MaidHome.Gameplay.Maid
                 _face = gameObject.AddComponent<MaidFaceInteraction>();
             }
 
+            _feed = GetComponent<MaidFeedInteraction>();
+            if (_feed == null)
+            {
+                // 场景里手摆的那份（吃喝的素材都填在它上面）优先，找不到再自己加一个
+                _feed = FindSceneFeedInteraction();
+            }
+
+            if (_feed == null)
+            {
+                _feed = gameObject.AddComponent<MaidFeedInteraction>();
+            }
+
             if (_hideOnOpen == null)
             {
                 // 兜底：改脚本时 Unity 可能正开着，新字段在场景里还是 None，按名字再找一次
                 _hideOnOpen = GameObject.Find("InvButton");
             }
+        }
+
+        /// <summary>
+        /// 场景里手摆的 MaidFeedInteraction（吃东西音效、蛋糕预制体、粒子贴图都填在它上面）。
+        /// 只认唯一一份，有多份就返回 null 让控制器自己加，免得挑错。
+        /// </summary>
+        static MaidFeedInteraction FindSceneFeedInteraction()
+        {
+            MaidFeedInteraction[] all = FindObjectsOfType<MaidFeedInteraction>(true);
+            MaidFeedInteraction found = null;
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i] == null)
+                {
+                    continue;
+                }
+
+                if (found != null)
+                {
+                    return null;
+                }
+
+                found = all[i];
+            }
+
+            return found;
         }
 
         void OnEnable()
@@ -86,6 +128,7 @@ namespace MaidHome.Gameplay.Maid
                 _panel.CloseRequested += Close;
                 _panel.TailRequested += OpenTail;
                 _panel.FaceRequested += OpenFace;
+                _panel.FeedRequested += OpenFeed;
             }
 
             if (_tail != null)
@@ -97,6 +140,11 @@ namespace MaidHome.Gameplay.Maid
             {
                 _face.Ended += OnFaceEnded;
             }
+
+            if (_feed != null)
+            {
+                _feed.Ended += OnFeedEnded;
+            }
         }
 
         void OnDisable()
@@ -106,6 +154,7 @@ namespace MaidHome.Gameplay.Maid
                 _panel.CloseRequested -= Close;
                 _panel.TailRequested -= OpenTail;
                 _panel.FaceRequested -= OpenFace;
+                _panel.FeedRequested -= OpenFeed;
             }
 
             if (_tail != null)
@@ -118,8 +167,14 @@ namespace MaidHome.Gameplay.Maid
                 _face.Ended -= OnFaceEnded;
             }
 
+            if (_feed != null)
+            {
+                _feed.Ended -= OnFeedEnded;
+            }
+
             // 界面状态跟着控制器走，别让背包按钮留在隐藏状态
             SetInventoryVisible(true);
+            RestoreFeedProjection();
         }
 
         void Update()
@@ -139,6 +194,14 @@ namespace MaidHome.Gameplay.Maid
             // 摸脸模式同理
             if (_face != null && _face.IsActive)
             {
+                return;
+            }
+
+            // 喂蛋糕模式同理
+            if (_feed != null && _feed.IsActive)
+            {
+                // 中/重挡要透视，轻挡要正交：每帧对一下（取景动画跑的时候先不切，见 ApplyFeedProjection）
+                ApplyFeedProjection();
                 return;
             }
 
@@ -197,7 +260,7 @@ namespace MaidHome.Gameplay.Maid
             if (_panel != null)
             {
                 _panel.Open(_current.Save, _tail != null && _tail.Supports(_current),
-                    _face != null && _face.Supports(_current));
+                    _face != null && _face.Supports(_current), _feed != null && _feed.Supports(_current));
             }
 
             SetInventoryVisible(false);
@@ -214,6 +277,14 @@ namespace MaidHome.Gameplay.Maid
             {
                 _face.Abort();
             }
+
+            if (_feed != null && _feed.IsActive)
+            {
+                _feed.Abort();
+            }
+
+            // 关界面可能是从中/重挡直接退出来的，投影也得切回正交
+            RestoreFeedProjection();
 
             if (_current != null && _current.gameObject.activeInHierarchy)
             {
@@ -280,7 +351,7 @@ namespace MaidHome.Gameplay.Maid
             if (_current != null && _panel != null)
             {
                 _panel.Open(_current.Save, _tail != null && _tail.Supports(_current),
-                    _face != null && _face.Supports(_current));
+                    _face != null && _face.Supports(_current), _feed != null && _feed.Supports(_current));
             }
         }
 
@@ -322,7 +393,94 @@ namespace MaidHome.Gameplay.Maid
             if (_current != null && _panel != null)
             {
                 _panel.Open(_current.Save, _tail != null && _tail.Supports(_current),
-                    _face != null && _face.Supports(_current));
+                    _face != null && _face.Supports(_current), _feed != null && _feed.Supports(_current));
+            }
+        }
+
+        void OpenFeed()
+        {
+            if (_feed == null || _current == null || _feed.IsActive)
+            {
+                return;
+            }
+
+            if (!_feed.Begin(_current))
+            {
+                return;
+            }
+
+            // 每次进模式重新对一次投影（上一次可能是透视退出来的）
+            _appliedFeedFov = -1f;
+
+            _panel.Close();
+            if (_cameraFitter != null && _feed.OrthographicSize > 0f)
+            {
+                Bounds head;
+                if (_feed.TryGetHeadBounds(out head))
+                {
+                    _cameraFitter.FocusKeepingAngle(head, _current.transform, _feed.OrthographicSize,
+                        _faceFocusPitchDegrees >= 0f ? _faceFocusPitchDegrees : _cameraFitter.FocusPitchDegrees,
+                        _faceFocusLookHeightRatio >= 0f
+                            ? _faceFocusLookHeightRatio
+                            : _cameraFitter.FocusLookHeightRatio);
+                }
+            }
+        }
+
+        void OnFeedEnded()
+        {
+            // 先把投影恢复正交，再回去取景（取景那套只会按正交算）
+            RestoreFeedProjection();
+
+            // 喂蛋糕时相机推近了，退出来要回到点开女仆时的取景
+            if (_current != null && _cameraFitter != null && _feed != null && _feed.OrthographicSize > 0f)
+            {
+                _cameraFitter.FocusKeepingAngle(_current.GetBounds(), _current.transform);
+            }
+
+            if (_current != null && _panel != null)
+            {
+                _panel.Open(_current.Save, _tail != null && _tail.Supports(_current),
+                    _face != null && _face.Supports(_current), _feed != null && _feed.Supports(_current));
+            }
+        }
+
+        /// <summary>中/重挡用透视（`_feedPerspectiveFov`），轻挡用正交；值没变就不动相机</summary>
+        void ApplyFeedProjection()
+        {
+            if (_cameraFitter == null || _feed == null)
+            {
+                return;
+            }
+
+            // 取景动画期间它每帧都会把相机按回正交，等它停下来再切
+            if (_cameraFitter.IsMoving)
+            {
+                return;
+            }
+
+            float fov = _feed.SelectedLevel == MaidFeedInteraction.LevelLight ? 0f : _feedPerspectiveFov;
+            if (Mathf.Abs(_appliedFeedFov - fov) < 0.001f)
+            {
+                return;
+            }
+
+            _appliedFeedFov = fov;
+            _cameraFitter.SetPerspective(fov);
+        }
+
+        /// <summary>退出/中断喂蛋糕：把相机切回正交</summary>
+        void RestoreFeedProjection()
+        {
+            if (_appliedFeedFov <= 0f)
+            {
+                return;
+            }
+
+            _appliedFeedFov = -1f;
+            if (_cameraFitter != null)
+            {
+                _cameraFitter.SetPerspective(0f);
             }
         }
 
