@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using MaidHome.Core.Input;
 using MaidHome.Gameplay.House;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace MaidHome.Gameplay.Bag
@@ -49,6 +50,11 @@ namespace MaidHome.Gameplay.Bag
         [SerializeField] private int _padding = 4;
         [SerializeField] private Vector2 _spacing = new Vector2(2f, 2f);
         [SerializeField] private Color _emptySlotColor = new Color(1f, 1f, 1f, 0.06f);
+
+        [Header("AR 入口")]
+        [Tooltip("点了跳去 AR 场景的按钮（场景里自己摆的），留空就没有这个入口")]
+        [SerializeField] private Button _arSceneButton;
+        [SerializeField] private string _arSceneName = "AR";
 
         readonly List<IBagItemProvider> _providers = new List<IBagItemProvider>();
         readonly List<BagItemInfo> _items = new List<BagItemInfo>();
@@ -103,6 +109,23 @@ namespace MaidHome.Gameplay.Bag
             }
 
             RegisterProviders();
+
+            if (_arSceneButton != null)
+            {
+                // AR 不走 SceneTransition：那套是抬主相机做转场，而 AR 相机的位姿每帧由 ARCore 写，抬了立刻被覆盖
+                _arSceneButton.onClick.AddListener(OpenArScene);
+            }
+        }
+
+        void OpenArScene()
+        {
+            if (string.IsNullOrEmpty(_arSceneName))
+            {
+                Debug.LogWarning("AR 场景名是空的，检查 BagPanel 上的设置", this);
+                return;
+            }
+
+            SceneManager.LoadScene(_arSceneName);
         }
 
         void Start()

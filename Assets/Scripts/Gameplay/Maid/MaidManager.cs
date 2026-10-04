@@ -329,6 +329,13 @@ namespace MaidHome.Gameplay.Maid
         {
             EnsureLoaded();
 
+            // 场上没有房子就没「放出来」这回事：这时候收回只是把存档里的 in_bag 全改成 true，
+            // 把玩家放出来的女仆永久塞回背包（切房子时旧房子还挂着，不受这个判断影响）
+            if (!HouseContext.HasHouse)
+            {
+                return 0;
+            }
+
             List<string> placed = new List<string>();
             foreach (KeyValuePair<string, MaidInstanceState> pair in _states)
             {

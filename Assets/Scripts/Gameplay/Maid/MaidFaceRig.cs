@@ -31,12 +31,36 @@ namespace MaidHome.Gameplay.Maid
         public Transform LeftEye;
         public Transform RightEye;
 
+        /// <summary>
+        /// 没有眼睛骨骼的模型（方块模型 / SimpleBedrockModel）按正脸 UV 推出来的眼睛锚点，
+        /// 两个都存成 Head 的局部坐标（头会动、会转，得每帧换算到世界）。
+        /// </summary>
+        public bool HasEyePoints;
+        public Vector3 LeftEyePoint;
+        public Vector3 RightEyePoint;
+
+        /// <summary>
+        /// 方块模型的正脸四个角（顺序：左上/右上/右下/左下），同样是 Head 的局部坐标。
+        /// 脸部判定区要用**脸**的框，不能用整块头部网格的包围盒——那个里面还挂着头发和侧板，框会大一圈。
+        /// </summary>
+        public Vector3[] FaceCorners;
+
         public bool Supports
         {
             get { return Head != null; }
         }
 
+        /// <summary>不算眼睛锚点（只要头的位置时用，例如喂蛋糕的头部判定盒）</summary>
         public static MaidFaceRig Build(Transform root)
+        {
+            return Build(root, Vector2.zero, Vector2.zero, 0f);
+        }
+
+        /// <summary>
+        /// eyeUvMin / eyeUvSize 是方块模型眼睛在**正脸局部 UV**里的位置（0 基像素，facePixels = 正脸像素边长）。
+        /// 这类模型没有眼睛骨骼，眼睛只画在正脸贴图上，只能按这个约定把锚点算出来；facePixels 传 0 就不算。
+        /// </summary>
+        public static MaidFaceRig Build(Transform root, Vector2 eyeUvMin, Vector2 eyeUvSize, float facePixels)
         {
             MaidFaceRig rig = new MaidFaceRig();
             if (root == null)
@@ -63,7 +87,174 @@ namespace MaidHome.Gameplay.Maid
 
             rig.LeftEye = PickFirst(all, rig.Head, LeftEyeNames);
             rig.RightEye = PickFirst(all, rig.Head, RightEyeNames);
+            if ((rig.LeftEye == null || rig.RightEye == null) && facePixels > 0.001f)
+            {
+                rig.BuildEyePoints(eyeUvMin, eyeUvSize, facePixels);
+            }
+
             return rig;
+        }
+
+        /// <summary>
+        /// 方块模型的眼睛没有骨骼，只在正脸贴图上画着。做法：在头这块几何里找**法线朝 +Z、面积最大**的
+        /// 那个三角形 —— 脸、内外两层贴片、头发侧板都在同一块网格里，但脸是最大那块 —— 再用它三个顶点
+        /// 把「脸部 UV ↔ 局部 x/y」解成线性的（矩形上本来就是线性的，三个点就够，也就不用去猜贴图朝向），
+        /// 最后把眼睛矩形的中心换算成头局部坐标。右眼按脸的中轴镜像（u' = facePixels - u）。
+        /// </summary>
+        void BuildEyePoints(Vector2 eyeUvMin, Vector2 eyeUvSize, float facePixels)
+        {
+            MeshFilter filter = HeadMesh != null ? HeadMesh.GetComponent<MeshFilter>() : null;
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            if (mesh == null || Head == null)
+            {
+                return;
+            }
+
+            Vector3[] verts = mesh.vertices;
+            Vector3[] normals = mesh.normals;
+            Vector2[] uvs = mesh.uv;
+            int[] triangles = mesh.triangles;
+            if (verts.Length == 0 || uvs.Length != verts.Length || normals.Length != verts.Length
+                || triangles.Length < 3)
+            {
+                return;
+            }
+
+            int a = -1;
+            int b = -1;
+            int c = -1;
+            float best = 0f;
+            for (int i = 0; i + 2 < triangles.Length; i += 3)
+            {
+                int i0 = triangles[i];
+                int i1 = triangles[i + 1];
+                int i2 = triangles[i + 2];
+                if (i0 >= verts.Length || i1 >= verts.Length || i2 >= verts.Length)
+                {
+                    continue;
+                }
+
+                if (normals[i0].z < 0.9f || normals[i1].z < 0.9f || normals[i2].z < 0.9f)
+                {
+                    continue;
+                }
+
+                float area = Vector3.Cross(verts[i1] - verts[i0], verts[i2] - verts[i0]).magnitude;
+                if (area <= best)
+                {
+                    continue;
+                }
+
+                best = area;
+                a = i0;
+                b = i1;
+                c = i2;
+            }
+
+            float duDx;
+            float dvDy;
+            if (a < 0 || !TryFaceSlopes(verts, uvs, a, b, c, out duDx, out dvDy))
+            {
+                return;
+            }
+
+            float minUvX = Mathf.Min(uvs[a].x, Mathf.Min(uvs[b].x, uvs[c].x));
+            float maxUvX = Mathf.Max(uvs[a].x, Mathf.Max(uvs[b].x, uvs[c].x));
+            float minUvY = Mathf.Min(uvs[a].y, Mathf.Min(uvs[b].y, uvs[c].y));
+            float maxUvY = Mathf.Max(uvs[a].y, Mathf.Max(uvs[b].y, uvs[c].y));
+
+            float face = Mathf.Max(1f, facePixels);
+            float sizeU = Mathf.Clamp(eyeUvSize.x, 0.01f, face);
+            float sizeV = Mathf.Clamp(eyeUvSize.y, 0.01f, face);
+            float centerU = Mathf.Clamp(eyeUvMin.x, 0f, face - sizeU) + sizeU * 0.5f;
+            float centerV = Mathf.Clamp(eyeUvMin.y, 0f, face - sizeV) + sizeV * 0.5f;
+            float planeZ = Mathf.Max(verts[a].z, Mathf.Max(verts[b].z, verts[c].z));
+
+            // 正脸那四个角：三个顶点就能确定矩形的 x/y 范围
+            float minX = Mathf.Min(verts[a].x, Mathf.Min(verts[b].x, verts[c].x));
+            float maxX = Mathf.Max(verts[a].x, Mathf.Max(verts[b].x, verts[c].x));
+            float minY = Mathf.Min(verts[a].y, Mathf.Min(verts[b].y, verts[c].y));
+            float maxY = Mathf.Max(verts[a].y, Mathf.Max(verts[b].y, verts[c].y));
+            FaceCorners = new[]
+            {
+                HeadLocalFromMeshLocal(new Vector3(minX, maxY, planeZ)),
+                HeadLocalFromMeshLocal(new Vector3(maxX, maxY, planeZ)),
+                HeadLocalFromMeshLocal(new Vector3(maxX, minY, planeZ)),
+                HeadLocalFromMeshLocal(new Vector3(minX, minY, planeZ)),
+            };
+
+            HasEyePoints = true;
+            LeftEyePoint = ToHeadLocal(verts[a], uvs[a], duDx, dvDy, planeZ,
+                FaceUv(centerU, centerV, face, minUvX, maxUvX, minUvY, maxUvY));
+            RightEyePoint = ToHeadLocal(verts[a], uvs[a], duDx, dvDy, planeZ,
+                FaceUv(face - centerU, centerV, face, minUvX, maxUvX, minUvY, maxUvY));
+        }
+
+        /// 脸部像素坐标 → 网格 UV：贴图左上角 = u 最小、v 最大（Unity 的 v 朝上）
+        static Vector2 FaceUv(float pixelU, float pixelV, float facePixels,
+            float minUvX, float maxUvX, float minUvY, float maxUvY)
+        {
+            return new Vector2(
+                Mathf.Lerp(minUvX, maxUvX, pixelU / facePixels),
+                Mathf.Lerp(maxUvY, minUvY, pixelV / facePixels));
+        }
+
+        /// 网格 UV → 头局部坐标：矩形上 UV 和局部 x/y 是线性的，用三个顶点解出来的斜率直接换算
+        Vector3 ToHeadLocal(Vector3 reference, Vector2 referenceUv, float duDx, float dvDy,
+            float planeZ, Vector2 uv)
+        {
+            Vector3 local = new Vector3(
+                reference.x + (uv.x - referenceUv.x) / duDx,
+                reference.y + (uv.y - referenceUv.y) / dvDy,
+                planeZ);
+            return HeadLocalFromMeshLocal(local);
+        }
+
+        /// 头这一块的几何可能挂在子骨骼上（HeadMesh 是往下找出来的），所以要经它的 transform 绕一圈
+        Vector3 HeadLocalFromMeshLocal(Vector3 meshLocal)
+        {
+            return Head.InverseTransformPoint(HeadMesh.transform.TransformPoint(meshLocal));
+        }
+
+        /// 三个顶点在矩形上是仿射的：挑一对 x 不同的解 du/dx，挑一对 y 不同的解 dv/dy
+        static bool TryFaceSlopes(Vector3[] verts, Vector2[] uvs, int a, int b, int c,
+            out float duDx, out float dvDy)
+        {
+            duDx = Slope(verts, uvs, a, b, true);
+            if (Mathf.Abs(duDx) < 0.000001f)
+            {
+                duDx = Slope(verts, uvs, a, c, true);
+            }
+
+            if (Mathf.Abs(duDx) < 0.000001f)
+            {
+                duDx = Slope(verts, uvs, b, c, true);
+            }
+
+            dvDy = Slope(verts, uvs, a, b, false);
+            if (Mathf.Abs(dvDy) < 0.000001f)
+            {
+                dvDy = Slope(verts, uvs, a, c, false);
+            }
+
+            if (Mathf.Abs(dvDy) < 0.000001f)
+            {
+                dvDy = Slope(verts, uvs, b, c, false);
+            }
+
+            return Mathf.Abs(duDx) > 0.000001f && Mathf.Abs(dvDy) > 0.000001f;
+        }
+
+        static float Slope(Vector3[] verts, Vector2[] uvs, int i, int j, bool horizontal)
+        {
+            float delta = horizontal ? verts[j].x - verts[i].x : verts[j].y - verts[i].y;
+            if (Mathf.Abs(delta) < 0.00001f)
+            {
+                return 0f;
+            }
+
+            float uv = horizontal ? uvs[j].x - uvs[i].x : uvs[j].y - uvs[i].y;
+            return uv / delta;
         }
 
         /// <summary>

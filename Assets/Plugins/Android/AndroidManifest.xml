@@ -14,6 +14,15 @@
     <!-- Portal 的 PC <-> 手机传输走 loopback TCP，没有这个权限连 loopback 都会失败 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Android 11 起应用默认「看不见」别的应用：不在这里声明的话，
+         getPackageInfo("com.google.ar.core") 会抛 NameNotFoundException，看起来和没装一模一样。
+         ARCore 官方也要求声明 com.google.ar.core 这一条。检不到 Play 商店同理。 -->
+    <queries>
+        <package android:name="com.google.ar.core" />
+        <package android:name="com.google.android.gms" />
+        <package android:name="com.android.vending" />
+    </queries>
+
     <application android:label="@string/app_name"
         android:icon="@mipmap/app_icon"
         android:allowBackup="false"

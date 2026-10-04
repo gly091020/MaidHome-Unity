@@ -49,6 +49,13 @@ namespace MaidHome.Gameplay.Maid
             }
 
             bool simpleBedrock = assets.Maid != null && assets.Maid.SimpleBedrockModel;
+            if (!simpleBedrock && assets.Clips.Count == 0 && MaidSimpleBedrockAnimator.HasDefaultRig(root.transform))
+            {
+                // 模组那边还有一类模型是 Java 代码统一驱动的（没有 animation.json），
+                // Unity 这边也一样：没有动画表 + 有那套四肢骨骼，就用同一套程序化动画驱动，别再报"没有走路动画"
+                simpleBedrock = true;
+            }
+
             MaidSimpleBedrockAnimator simpleAnimator = root.GetComponent<MaidSimpleBedrockAnimator>();
             if (simpleBedrock)
             {
@@ -65,6 +72,12 @@ namespace MaidHome.Gameplay.Maid
             if (root.GetComponent<MaidWanderer>() == null)
             {
                 root.AddComponent<MaidWanderer>();
+            }
+
+            // 模型里有 blink（闭眼贴片）才用得上，没有的话这个组件是空操作
+            if (root.GetComponent<MaidHurtBlink>() == null)
+            {
+                root.AddComponent<MaidHurtBlink>();
             }
 
             MaidAgent agent = root.GetComponent<MaidAgent>();

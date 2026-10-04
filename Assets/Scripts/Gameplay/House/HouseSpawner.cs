@@ -24,6 +24,22 @@ namespace MaidHome.Gameplay.House
         {
             LoadingScreen.Register(LoadingScreen.HouseJob, 3f, "正在加载房子…");
 
+            // 加载期间立起 HouseContext.IsLoading：HouseSwitcher 等不到房子的话会自己再加载一栋，
+            // 真机上 glTF + 烘 NavMesh 经常超过它那几秒等待，结果场上并排摆出两栋
+            HouseContext.BeginLoad();
+            try
+            {
+                await LoadHouse();
+            }
+            finally
+            {
+                HouseContext.EndLoad();
+            }
+        }
+
+        /// <summary>真正的加载流程，单独一个方法是为了让 Start 的 finally 一定放得下 IsLoading。</summary>
+        async System.Threading.Tasks.Task LoadHouse()
+        {
             // 第一次进游戏（一栋房子都没有）会写一个内置示例房间进来，免得空着没得看
             HouseStarter.Ensure(AppPaths.HouseSaveRoot);
             List<HouseSaveData> houses = HouseSaveData.ScanRoot(AppPaths.HouseSaveRoot);

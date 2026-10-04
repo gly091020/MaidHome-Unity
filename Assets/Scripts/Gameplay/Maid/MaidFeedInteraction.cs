@@ -668,7 +668,7 @@ namespace MaidHome.Gameplay.Maid
         float PlayEatAnimation()
         {
             MaidSimpleBedrockAnimator simple = GetSimpleAnimator();
-            if (IsSimpleModel() && simple != null)
+            if (IsSimpleModel())
             {
                 float seconds = Mathf.Clamp(_simpleEatSeconds, 0.2f, Mathf.Max(0.2f, _eatMaxSeconds));
                 simple.PlayEat(seconds);
@@ -737,9 +737,15 @@ namespace MaidHome.Gameplay.Maid
             return _agent != null ? _agent.GetComponent<MaidSimpleBedrockAnimator>() : null;
         }
 
+        /// <summary>
+        /// 程序化动画统一以「挂没挂 MaidSimpleBedrockAnimator（而且是启用状态）」为准：
+        /// 模组侧 Java 统一驱动的方块模型没有 animation.json，也是挂这个组件；
+        /// GeckoLib 模型上那份（如果有）会被 MaidPlacement 关掉。
+        /// </summary>
         bool IsSimpleModel()
         {
-            return _agent != null && _agent.Save != null && _agent.Save.SimpleBedrockModel;
+            MaidSimpleBedrockAnimator simple = GetSimpleAnimator();
+            return simple != null && simple.isActiveAndEnabled;
         }
 
         // ---------- 受伤动画 ----------

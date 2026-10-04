@@ -110,6 +110,14 @@ namespace MaidHome.Gameplay.Maid
         [Tooltip("耳朵判定区收多少：1 = 耳朵网格的投影包围盒，越小越难点到耳朵（脸的区域就更大）")]
         [SerializeField] private float _earZoneScale = 0.75f;
 
+        [Header("方块模型的眼睛位置")]
+        [Tooltip("眼睛在正脸局部 UV 里的位置（0 基像素）；方块模型没有眼睛骨骼，只能用这个约定推锚点。默认左眼 (1,5) 大小 2×2，就是 1 基的 (2,6)-(3,7)")]
+        [SerializeField] private Vector2 _faceEyeUvMin = new Vector2(1f, 5f);
+        [Tooltip("眼睛大小，默认 2×2")]
+        [SerializeField] private Vector2 _faceEyeUvSize = new Vector2(2f, 2f);
+        [Tooltip("正脸贴图的像素边长，这些方块模型都是 8")]
+        [SerializeField] private float _facePixels = 8f;
+
         [Header("转身")]
         [Tooltip("进摸脸模式时她转过来面对镜头要多久")]
         [SerializeField] private float _turnSeconds = 0.35f;
@@ -289,12 +297,12 @@ namespace MaidHome.Gameplay.Maid
         /// <summary>这个女仆能不能摸脸（有头就行），用来决定面板按钮能不能点</summary>
         public bool Supports(MaidAgent agent)
         {
-            if (agent == null || (agent.Save != null && agent.Save.SimpleBedrockModel))
+            if (agent == null)
             {
                 return false;
             }
 
-            return MaidFaceRig.Build(agent.transform).Supports;
+            return MaidFaceRig.Build(agent.transform, _faceEyeUvMin, _faceEyeUvSize, _facePixels).Supports;
         }
 
         public bool Begin(MaidAgent agent, AudioClip slapClip)
@@ -306,14 +314,7 @@ namespace MaidHome.Gameplay.Maid
 
             Abort();
 
-            // 方块模型的女仆（这种走 SimpleBedrockModel）没有 GeckoLib 那套骨骼
-            if (agent.Save != null && agent.Save.SimpleBedrockModel)
-            {
-                Debug.LogWarning("SimpleBedrockModel 的女仆不支持摸脸: " + agent.name);
-                return false;
-            }
-
-            _rig = MaidFaceRig.Build(agent.transform);
+            _rig = MaidFaceRig.Build(agent.transform, _faceEyeUvMin, _faceEyeUvSize, _facePixels);
             if (!_rig.Supports)
             {
                 Debug.LogWarning("这个模型的骨架里没找到头，摸不了脸: " + agent.name);
@@ -1379,13 +1380,27 @@ namespace MaidHome.Gameplay.Maid
             leftX = head.center.x - head.width * 0.21f;
             rightX = head.center.x + head.width * 0.21f;
             eyeY = head.center.y + head.height * 0.14f;
-            if (_rig.LeftEye == null || _rig.RightEye == null)
+
+            Vector3 leftWorld;
+            Vector3 rightWorld;
+            if (_rig.LeftEye != null && _rig.RightEye != null)
+            {
+                leftWorld = _rig.LeftEye.position;
+                rightWorld = _rig.RightEye.position;
+            }
+            else if (_rig.HasEyePoints)
+            {
+                // 方块模型没有眼睛骨骼：眼睛画在正脸贴图上，用按 UV 约定推出来的锚点
+                leftWorld = _rig.Head.TransformPoint(_rig.LeftEyePoint);
+                rightWorld = _rig.Head.TransformPoint(_rig.RightEyePoint);
+            }
+            else
             {
                 return false;
             }
 
-            Vector3 left = camera.WorldToScreenPoint(_rig.LeftEye.position);
-            Vector3 right = camera.WorldToScreenPoint(_rig.RightEye.position);
+            Vector3 left = camera.WorldToScreenPoint(leftWorld);
+            Vector3 right = camera.WorldToScreenPoint(rightWorld);
             if (left.z <= 0f || right.z <= 0f)
             {
                 return false;
@@ -1435,6 +1450,14 @@ namespace MaidHome.Gameplay.Maid
                 return false;
             }
 
+            // 方块模型优先用"正脸那四个角"：头这块网格里还挂着头发、侧板，用整块包围盒框会大一圈，
+            // 表现就是脸区判得比脸大（扇脸/戳脸会误吃到脸框外）
+            if (_rig.FaceCorners != null && TryCornersRect(camera, _rig.Head, _rig.FaceCorners, out rect)
+                && rect.width > 4f && rect.height > 4f)
+            {
+                return true;
+            }
+
             if (_rig.HeadMesh != null && TryProject(_rig.HeadMesh.bounds, camera, out rect)
                 && rect.width > 4f && rect.height > 4f)
             {
@@ -1449,6 +1472,37 @@ namespace MaidHome.Gameplay.Maid
 
             float size = Screen.height * 0.16f;
             rect = new Rect(screen.x - size * 0.5f, screen.y - size * 0.5f, size, size);
+            return true;
+        }
+
+        /// 把一组「某个 Transform 局部空间里的点」投到屏幕上，取它们的屏幕包围盒
+        static bool TryCornersRect(Camera camera, Transform space, Vector3[] localPoints, out Rect rect)
+        {
+            rect = new Rect();
+            if (camera == null || space == null || localPoints == null || localPoints.Length == 0)
+            {
+                return false;
+            }
+
+            float minX = float.MaxValue;
+            float minY = float.MaxValue;
+            float maxX = float.MinValue;
+            float maxY = float.MinValue;
+            for (int i = 0; i < localPoints.Length; i++)
+            {
+                Vector3 screen = camera.WorldToScreenPoint(space.TransformPoint(localPoints[i]));
+                if (screen.z <= 0f)
+                {
+                    return false;
+                }
+
+                minX = Mathf.Min(minX, screen.x);
+                minY = Mathf.Min(minY, screen.y);
+                maxX = Mathf.Max(maxX, screen.x);
+                maxY = Mathf.Max(maxY, screen.y);
+            }
+
+            rect = new Rect(minX, minY, maxX - minX, maxY - minY);
             return true;
         }
 

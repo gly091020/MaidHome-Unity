@@ -39,6 +39,13 @@ namespace MaidHome.Gameplay.Maid
 
         public void Play(Color color, float seconds)
         {
+            // 方块模型没有 attacked 动画可借，用它们自己的 blink 节点闭一下眼当受伤表现
+            MaidHurtBlink blink = GetComponent<MaidHurtBlink>();
+            if (blink != null && blink.isActiveAndEnabled)
+            {
+                blink.Play();
+            }
+
             if (_routine != null)
             {
                 StopCoroutine(_routine);

@@ -80,8 +80,11 @@ namespace MaidHome.Gameplay.House
         {
             Refresh();
 
+            // 等现成的房子。正在加载（HouseSpawner 那种）就一直等下去，只按秒数等的话
+            // 真机上加载一超时这里就会跟着再加载一栋，场上并排摆出两栋房子
             float deadline = Time.realtimeSinceStartup + Mathf.Max(0f, _adoptWaitSeconds);
-            while (!HouseContext.HasHouse && Time.realtimeSinceStartup < deadline)
+            while (!HouseContext.HasHouse
+                && (Time.realtimeSinceStartup < deadline || HouseContext.IsLoading))
             {
                 yield return null;
             }
@@ -239,6 +242,13 @@ namespace MaidHome.Gameplay.House
             if (IsSwitching)
             {
                 return false;
+            }
+
+            // 场上已经有房子但还没接管（进游戏那会儿没等到）：先接管再判断，
+            // 不然 IsCurrent 认不出它，同一栋会被当成"要切过去的新房子"再加载一遍
+            if (HouseContext.HasHouse && string.IsNullOrEmpty(CurrentId))
+            {
+                AdoptCurrent();
             }
 
             HouseSaveData house = Find(id);
