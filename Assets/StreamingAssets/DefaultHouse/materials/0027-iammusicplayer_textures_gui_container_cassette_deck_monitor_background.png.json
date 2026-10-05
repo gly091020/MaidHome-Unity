@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 27,
+  "sourceTexture": "iammusicplayer:textures/gui/container/cassette_deck/monitor/background.png",
+  "exportedRelativeUri": "textures/iammusicplayer/gui/container/cassette_deck/monitor/background.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "MASK",
+    "cutoff": 0.5
+  },
+  "doubleSided": false,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST",
+  "degradationCodes": []
+}

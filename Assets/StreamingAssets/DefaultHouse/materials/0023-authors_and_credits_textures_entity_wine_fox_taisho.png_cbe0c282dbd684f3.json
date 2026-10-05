@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 23,
+  "sourceTexture": "authors_and_credits:textures/entity/wine_fox_taisho.png#cbe0c282dbd684f3",
+  "exportedRelativeUri": "textures/generated/cbe0c282dbd684f3.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "MASK",
+    "cutoff": 0.5
+  },
+  "doubleSided": true,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST",
+  "degradationCodes": []
+}

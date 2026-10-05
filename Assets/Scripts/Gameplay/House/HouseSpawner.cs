@@ -40,8 +40,9 @@ namespace MaidHome.Gameplay.House
         /// <summary>真正的加载流程，单独一个方法是为了让 Start 的 finally 一定放得下 IsLoading。</summary>
         async System.Threading.Tasks.Task LoadHouse()
         {
-            // 第一次进游戏（一栋房子都没有）会写一个内置示例房间进来，免得空着没得看
-            HouseStarter.Ensure(AppPaths.HouseSaveRoot);
+            // 第一次进游戏（一栋房子都没有）会把随包默认房子装进存档，免得空着没得看；
+            // Android 上要从 apk 里读，所以是 async 的（这里本来就是 async 流程）
+            await HouseStarter.EnsureAsync(AppPaths.HouseSaveRoot);
             List<HouseSaveData> houses = HouseSaveData.ScanRoot(AppPaths.HouseSaveRoot);
             HouseSaveData house = Find(houses, ResolveHouseId());
             if (house == null && houses.Count > 0)

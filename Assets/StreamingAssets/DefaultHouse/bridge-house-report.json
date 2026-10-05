@@ -1,0 +1,13 @@
+{
+  "walkable_cells": 173,
+  "snapshot": "rolling_client_snapshot",
+  "origin_meaning": "selection-relative maid spawn cell, selected near horizontal center",
+  "standing_width": 0.6,
+  "standing_height": 1.8,
+  "warnings": [
+    "网格只表达整数脚底高度；半砖、楼梯、栏杆等不满足完整支撑面的格子保守标 0。",
+    "碰撞与模型均为分帧客户端快照；导出期间请保持建筑不变。动态实体不计入静态可行走网格。",
+    "地板及 1.8 格净空必须完整包含在选区内；液体和已知危险方块保守标 0。"
+  ],
+  "minetomesh_warnings": 19
+}

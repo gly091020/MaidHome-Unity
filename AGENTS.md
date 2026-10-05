@@ -15,6 +15,7 @@ Unity 游戏工程，需要和 Minecraft 模组（NeoForge 1.21.1 生态，例�
 - 涉及平台差异的代码必须双实现（Windows / Android），公共逻辑抽到平台无关层，不把 `#if` 散落到玩法代码里
 - Android 构建前置：Android Build Support 模块**必须和编辑器同源同版本**（国际版配国际版，中国版 `c1` 配 `c1`）。踩过：从 unity.cn 下到的包文件名是国际版名字、内部却是 `Unity 2020.3.30f1c1 Android Support`，装进国际版编辑器后 Player Settings 直接 `MissingMethodException: PlayerSettings.GetSecurityBuildForPlatform`（该 API 不在国际版核心里）。下载后先 `(Get-Item <包>).VersionInfo.ProductName` 确认，别只看文件名
 - Android Target API 用 30（Android 11）。Unity 2020.3 自带的 Gradle/AGP 版本老，调更高要改 gradle 模板，没必要
+- **出包用编辑器菜单 `Tools/MaidHome/打包 Android APK（IL2CPP + ARM64）`**（`Assets/Scripts/Editor/AndroidApkBuilder.cs`）：它会临时把脚本后端切成 IL2CPP、架构只勾 ARM64、关掉 AAB，编译完把 apk 拷到桌面（`PlayerSettings.productName + bundleVersion + .apk`，例如 `我的小女仆0.1-alpha.apk`），**finally 里无条件还原**这三项设置。临时产物写在系统 temp 下的 `MaidHomeApk/`，工程里不留东西。平台不是 Android 时会先弹窗问要不要切过去。跑它之前 Unity 必须是焦点窗口（构建是阻塞的，别在构建中途切走）
 - 需要声明权限时要加自定义 `AndroidManifest.xml`
 - `AndroidJavaClass` 里**嵌套类要写 `$`**（`android.os.Build$VERSION`，顶层类才是点号 `android.os.Build`），写成点号会抛 `ClassNotFoundException`；另外查 Android 环境时**每一项都要各自 try/catch**，一个挂掉别把后面的检查全带走
 - **Android 11 起应用默认「看不见」别的应用**（包可见性限制）：用 `PackageManager` 查「装没装 Google Play Services for AR / Play 商店」这类第三方包，必须在自定义 `AndroidManifest.xml` 里用 `<queries>` 声明，否则**装了也一样抛 `NameNotFoundException`**，和「没装」完全无法区分（踩过：AR 排查脚本把带 ARCore 的手机判成没有）。ARCore 官方也要求声明 `com.google.ar.core`
@@ -61,6 +62,7 @@ Unity 游戏工程，需要和 Minecraft 模组（NeoForge 1.21.1 生态，例�
 按"只读随包"和"可下载可写"两条线分开，别混。
 
 - `Assets/StreamingAssets/mcdata`：随包发布、只读的原始数据（geo/animation/texture/json）。开发期调试用的本地副本放这里，Android 上必须用 `UnityWebRequest` 读，不能 `File.ReadAllBytes`
+- `Assets/StreamingAssets/DefaultHouse/`：随包的默认房子（`house.json` + glTF + buffer + textures，共 80 个文件 / 9.2 MB，已去掉 9 MB 的 `.usda` 交换文件）。**读它只能走 `Core/Storage/StreamingAssetsStorage.ReadAllBytesAsync`**（唯一带 Android `#if` 的平台层：Windows/编辑器直接 `File`，Android 走 `UnityWebRequest`，所以是 async 的）。目录里那份 `files.txt` 是文件清单（一行一个相对路径）——Android 上 StreamingAssets 在 apk 里没法遍历目录，只能照清单一个个读。**换默认房子**：改 `Tools/default_house_pack.py` 里的源路径再跑一次 `python Tools/default_house_pack.py [源目录]`，它会重拷目录 + 重写清单 + 校验 glTF 引用的 buffer/贴图都在包里。装进存档的逻辑在 `Interop/House/DefaultHouseInstaller.cs`（保留原来的 uuid 当文件夹名），由 `HouseStarter.EnsureAsync` 在"第一次启动且一栋房子都没有"时调一次，装不上才退回老的程序化示例房间；`HouseSwitcher.Refresh` 只扫不补（别再让它补，不然会跟启动流程抢，默认房子永远装不上）
 - `Application.persistentDataPath/mcdata`：运行时下载的数据，目录结构与 StreamingAssets 下的 `mcdata` 保持一致
 - `Application.persistentDataPath/cache`：可再生的中间产物
 - `Application.persistentDataPath/tmp`：下载中的半成品，写完再 `File.Move` 覆盖正式文件

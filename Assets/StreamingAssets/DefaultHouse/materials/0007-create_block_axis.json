@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 7,
+  "sourceTexture": "create:block/axis",
+  "exportedRelativeUri": "textures/create/block/axis.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "BLEND"
+  },
+  "doubleSided": false,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST",
+  "degradationCodes": []
+}

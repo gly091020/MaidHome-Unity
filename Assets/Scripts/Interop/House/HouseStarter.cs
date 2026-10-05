@@ -1,17 +1,19 @@
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using MaidHome.Core.Storage;
 using UnityEngine;
 
 namespace MaidHome.Interop.House
 {
     /// <summary>
-    /// 第一次进游戏（saves/house 里一栋都没有）时写一个内置的示例房间进去，免得空着——没房子就既看不了
-    /// 景也没法放女仆。只写一份 house.json（`model` 留空，由 HouseImporter 按格表程序化搭地板和墙），
-    /// 不依赖任何随包资源，Android 上也就绕开了 StreamingAssets 读不了的问题。
+    /// 第一次进游戏（saves/house 里一栋都没有）时给存档补一栋房子，免得空着——没房子就既看不了景
+    /// 也没法放女仆。优先装随包的那栋真房子（Assets/StreamingAssets/DefaultHouse，
+    /// 见 DefaultHouseInstaller）；万一随包里没有，退回老做法：现场写一个程序化示例房间
+    /// （只写 house.json，`model` 留空，由 HouseImporter 按格表搭地板和墙）。
     ///
-    /// 只在"一栋都没有"且"从没生成过"时写一次（留一个 `.starter-done` 标记），玩家删掉它不会再冒出来。
-    /// 导入真房子以后它就是一栋普通房子，可以照常删。
+    /// 只在"一栋都没有"且"从没装过"时做一次（留一个 `.starter-done` 标记），玩家删掉它不会再冒出来。
+    /// 装进来的就是一栋普通房子，可以照常删。
     /// </summary>
     public static class HouseStarter
     {
@@ -20,7 +22,7 @@ namespace MaidHome.Interop.House
         const int Size = 8;
         const int Height = 3;
 
-        public static bool Ensure(string houseRoot)
+        public static async Task<bool> EnsureAsync(string houseRoot)
         {
             if (string.IsNullOrEmpty(houseRoot))
             {
@@ -38,14 +40,39 @@ namespace MaidHome.Interop.House
                 return false;
             }
 
+            bool installed = await DefaultHouseInstaller.InstallAsync(houseRoot);
+            if (!installed)
+            {
+                installed = CreateStarterRoom(houseRoot);
+            }
+
+            if (!installed)
+            {
+                return false;
+            }
+
+            try
+            {
+                File.WriteAllText(marker, "1", new UTF8Encoding(false));
+            }
+            catch (System.Exception error)
+            {
+                Debug.LogWarning("写默认房子标记失败（下次启动会再装一次）: " + error.Message);
+            }
+
+            return true;
+        }
+
+        /// <summary>随包默认房子不可用时的兜底：一个 8×3×8 的程序化示例房间</summary>
+        static bool CreateStarterRoom(string houseRoot)
+        {
             string folder = Path.Combine(houseRoot, FolderName);
             string file = Path.Combine(folder, "house.json");
             try
             {
                 AppPaths.EnsureDirectory(folder);
                 File.WriteAllText(file, BuildJson(), new UTF8Encoding(false));
-                File.WriteAllText(marker, "1", new UTF8Encoding(false));
-                Debug.Log("[房子] 存档里一栋房子都没有，已生成内置示例房间（导入真房子后可以把它删掉）");
+                Debug.Log("[房子] 随包没带默认房子，已生成内置示例房间（导入真房子后可以把它删掉）");
                 return true;
             }
             catch (System.Exception error)

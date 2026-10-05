@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 4,
+  "sourceTexture": "minecraft:block/barrel_top",
+  "exportedRelativeUri": "textures/minecraft/block/barrel_top.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "OPAQUE"
+  },
+  "doubleSided": false,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST_MIPMAP",
+  "degradationCodes": []
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 3,
+  "sourceTexture": "minecraft:block/oak_planks",
+  "exportedRelativeUri": "textures/minecraft/block/oak_planks.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "OPAQUE"
+  },
+  "doubleSided": false,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST_MIPMAP",
+  "degradationCodes": []
+}

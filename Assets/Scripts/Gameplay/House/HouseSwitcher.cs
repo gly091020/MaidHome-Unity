@@ -89,6 +89,10 @@ namespace MaidHome.Gameplay.House
                 yield return null;
             }
 
+            // 首次启动时默认房子是 HouseSpawner 那边 async 装的，上面那次 Refresh 可能扫在装好之前，
+            // 这里再扫一遍，别让房子列表停在空的那一版
+            Refresh();
+
             if (HouseContext.HasHouse)
             {
                 AdoptCurrent();
@@ -104,8 +108,8 @@ namespace MaidHome.Gameplay.House
         /// <summary>重新扫一遍房子目录</summary>
         public void Refresh()
         {
-            // 一栋都没有时补一个内置示例房间（只补一次，玩家删了不会再冒出来）
-            HouseStarter.Ensure(AppPaths.HouseSaveRoot);
+            // 这里只扫、不补：默认房子是启动时 HouseSpawner 那边 HouseStarter.EnsureAsync 负责的，
+            // 玩家自己把房子删光了就该是空的（那里有个 .starter-done 标记，只装一次）
             _houses.Clear();
             _houses.AddRange(HouseSaveData.ScanRoot(AppPaths.HouseSaveRoot));
             RaiseChanged();

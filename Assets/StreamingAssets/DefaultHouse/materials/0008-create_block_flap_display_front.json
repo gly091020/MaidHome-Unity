@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 8,
+  "sourceTexture": "create:block/flap_display_front",
+  "exportedRelativeUri": "textures/create/block/flap_display_front.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "BLEND"
+  },
+  "doubleSided": false,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST",
+  "degradationCodes": []
+}

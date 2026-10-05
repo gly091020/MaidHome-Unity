@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 13,
+  "sourceTexture": "iammusicplayer:block/boombox/boombox_on",
+  "exportedRelativeUri": "textures/iammusicplayer/block/boombox/boombox_on.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "OPAQUE"
+  },
+  "doubleSided": false,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST_MIPMAP",
+  "degradationCodes": []
+}

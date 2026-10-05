@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 1,
+  "sourceTexture": "minecraft:block/oak_log_top",
+  "exportedRelativeUri": "textures/minecraft/block/oak_log_top.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "OPAQUE"
+  },
+  "doubleSided": false,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST_MIPMAP",
+  "degradationCodes": []
+}

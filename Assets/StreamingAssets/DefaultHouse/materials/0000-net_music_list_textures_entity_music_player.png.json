@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "gltfMaterialIndex": 0,
+  "sourceTexture": "net_music_list:textures/entity/music_player.png",
+  "exportedRelativeUri": "textures/net_music_list/entity/music_player.png",
+  "renderType": "captured",
+  "alpha": {
+    "mode": "MASK",
+    "cutoff": 0.5
+  },
+  "doubleSided": true,
+  "emissive": false,
+  "blendSemantic": "STANDARD",
+  "sampler": "NEAREST",
+  "degradationCodes": []
+}

@@ -1,0 +1,620 @@
+{
+  "schemaVersion": 3,
+  "status": "completed_with_warnings",
+  "snapshotMode": "rolling_client_snapshot",
+  "dimension": "minecraft:overworld",
+  "min": [
+    -31,
+    56,
+    5
+  ],
+  "max": [
+    -18,
+    65,
+    18
+  ],
+  "origin": [
+    -31,
+    56,
+    5
+  ],
+  "volume": 1960,
+  "startGameTime": 59251,
+  "endGameTime": 59333,
+  "counters": {
+    "scannedPositions": 1960,
+    "renderedBlocks": 568,
+    "renderedFluids": 0,
+    "blockEntities": 37,
+    "entities": 1,
+    "materials": 38,
+    "textures": 37,
+    "triangles": 29448,
+    "placeholders": 0
+  },
+  "geometryAdjustments": {
+    "coplanarGroups": 8,
+    "offsetFaces": 8,
+    "maxLayers": 2,
+    "byBlock": {
+      "iammusicplayer:music_manager": 6,
+      "netmusic:cd_burner": 2
+    }
+  },
+  "missingChunks": [],
+  "diagnostics": [
+    {
+      "severity": "WARNING",
+      "code": "ATLAS_SPRITE_RESOLUTION_FAILED",
+      "objectId": "createtreadmill:maid_motor",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -27,
+        "y": 57,
+        "z": 7
+      },
+      "rendererClass": "net.minecraft.client.renderer.block.model.BakedQuad",
+      "exceptionType": "",
+      "message": "No atlas sprite covered UV [0.761475, 0.985352]-[0.762207, 0.986816]; kept declared sprite createtreadmill:block/maid_motor"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-26,57,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -26,
+        "y": 57,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-26,58,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -26,
+        "y": 58,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-26,59,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -26,
+        "y": 59,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-27,57,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -27,
+        "y": 57,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-27,58,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -27,
+        "y": 58,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-27,59,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -27,
+        "y": 59,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-28,57,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -28,
+        "y": 57,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-28,58,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -28,
+        "y": 58,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-28,59,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -28,
+        "y": 59,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-29,57,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -29,
+        "y": 57,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-29,58,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -29,
+        "y": 58,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-29,59,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -29,
+        "y": 59,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-30,57,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 57,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-30,58,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 58,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "minecraft:barrel/-30,59,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 59,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "touhou_little_maid:maid_beacon/-25,58,8",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -25,
+        "y": 58,
+        "z": 8
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "touhou_little_maid:maid_beacon/-26,58,18",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -26,
+        "y": 58,
+        "z": 18
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "WARNING",
+      "code": "BLOCK_ENTITY_RENDERER_MISSING",
+      "objectId": "touhou_little_maid:maid_beacon/-30,62,6",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 62,
+        "z": 6
+      },
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Block entity has no renderer and is represented by its block model"
+    },
+    {
+      "severity": "INFO",
+      "code": "GPU_TEXTURE_READBACK_USED",
+      "objectId": "authors_and_credits:textures/entity/wine_fox_taisho.png",
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Read loaded OpenGL texture 66"
+    },
+    {
+      "severity": "INFO",
+      "code": "GPU_TEXTURE_READBACK_USED",
+      "objectId": "geckolib:textures/entity/winefox.png",
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Read loaded OpenGL texture 77"
+    },
+    {
+      "severity": "INFO",
+      "code": "GPU_TEXTURE_READBACK_USED",
+      "objectId": "minecraft:skins/b017e2c378209da9ae81b95ac9f7c72244105764",
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Read loaded OpenGL texture 420"
+    },
+    {
+      "severity": "INFO",
+      "code": "GPU_TEXTURE_READBACK_USED",
+      "objectId": "minecraft:textures/atlas/blocks.png",
+      "rendererClass": "",
+      "exceptionType": "",
+      "message": "Read loaded OpenGL texture 7"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "createtreadmill:maid_motor_entity/-27,57,7",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -27,
+        "y": 57,
+        "z": 7
+      },
+      "rendererClass": "com.gly091020.CreateTreadmill.renderer.MaidMotorRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "iammusicplayer:boombox/-22,58,11",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -22,
+        "y": 58,
+        "z": 11
+      },
+      "rendererClass": "dev.felnull.imp.client.renderer.blockentity.BoomboxBlockEntityRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "iammusicplayer:boombox/-22,58,12",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -22,
+        "y": 58,
+        "z": 12
+      },
+      "rendererClass": "dev.felnull.imp.client.renderer.blockentity.BoomboxBlockEntityRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "iammusicplayer:cassette_deck/-22,58,13",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -22,
+        "y": 58,
+        "z": 13
+      },
+      "rendererClass": "dev.felnull.imp.client.renderer.blockentity.CassetteDeckBlockEntityRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "iammusicplayer:music_manager/-22,58,14",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -22,
+        "y": 58,
+        "z": 14
+      },
+      "rendererClass": "dev.felnull.imp.client.renderer.blockentity.MusicManagerBlockEntityRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "minecraft:skull/-27,62,8",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -27,
+        "y": 62,
+        "z": 8
+      },
+      "rendererClass": "net.minecraft.client.renderer.blockentity.SkullBlockRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "net_music_list:music_player/e6a06483-4633-4a9e-a227-5689a541a81b",
+      "rendererClass": "com.gly091020.netMusicListNeoforge.entity.MusicPlayerRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "netmusic:music_player/-30,57,15",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 57,
+        "z": 15
+      },
+      "rendererClass": "com.github.tartaricacid.netmusic.client.renderer.MusicPlayerRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "netmusicadvancedplayer:advanced_player/-30,57,14",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 57,
+        "z": 14
+      },
+      "rendererClass": "com.gly091020.netmusicadvancedplayer.client.renderer.AdvancedPlayerRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "sablemaidragdoll:maid_doll/-30,58,10",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 58,
+        "z": 10
+      },
+      "rendererClass": "com.gly091020.SableMaidRagdoll.client.renderer.block.MaidDollRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "sablemaidragdoll:maid_doll/-30,58,11",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 58,
+        "z": 11
+      },
+      "rendererClass": "com.gly091020.SableMaidRagdoll.client.renderer.block.MaidDollRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "sablemaidragdoll:maid_doll/-30,58,9",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 58,
+        "z": 9
+      },
+      "rendererClass": "com.gly091020.SableMaidRagdoll.client.renderer.block.MaidDollRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "sablemaidragdoll:mob_cannon/-30,57,13",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 57,
+        "z": 13
+      },
+      "rendererClass": "com.gly091020.SableMaidRagdoll.client.renderer.block.MobCannonRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "touhou_little_maid:bookshelf/-29,61,9",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -29,
+        "y": 61,
+        "z": 9
+      },
+      "rendererClass": "com.github.tartaricacid.touhoulittlemaid.client.renderer.tileentity.TileEntityBookshelfRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "touhou_little_maid:keyboard/-29,61,12",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -29,
+        "y": 61,
+        "z": 12
+      },
+      "rendererClass": "com.github.tartaricacid.touhoulittlemaid.client.renderer.tileentity.TileEntityKeyboardRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "touhou_little_maid:maid_bed/-30,61,15",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 61,
+        "z": 15
+      },
+      "rendererClass": "com.github.tartaricacid.touhoulittlemaid.client.renderer.tileentity.TileEntityMaidBedRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "touhou_little_maid:maid_bed/-30,61,16",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 61,
+        "z": 16
+      },
+      "rendererClass": "com.github.tartaricacid.touhoulittlemaid.client.renderer.tileentity.TileEntityMaidBedRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "touhou_little_maid:maid_bed/-30,61,17",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 61,
+        "z": 17
+      },
+      "rendererClass": "com.github.tartaricacid.touhoulittlemaid.client.renderer.tileentity.TileEntityMaidBedRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "touhou_little_maid:shrine/-30,57,12",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 57,
+        "z": 12
+      },
+      "rendererClass": "com.github.tartaricacid.touhoulittlemaid.client.renderer.tileentity.TileEntityShrineRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    },
+    {
+      "severity": "INFO",
+      "code": "RENDER_BACKEND_FALLBACK_USED",
+      "objectId": "touhou_little_maid:shrine/-30,57,8",
+      "position": {
+        "dimension": "minecraft:overworld",
+        "x": -30,
+        "y": 57,
+        "z": 8
+      },
+      "rendererClass": "com.github.tartaricacid.touhoulittlemaid.client.renderer.tileentity.TileEntityShrineRenderer",
+      "exceptionType": "",
+      "message": "flywheel"
+    }
+  ],
+  "timingsMillis": {}
+}
