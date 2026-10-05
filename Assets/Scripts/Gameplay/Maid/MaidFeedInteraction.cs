@@ -34,6 +34,10 @@ namespace MaidHome.Gameplay.Maid
         [Header("吃东西")]
         [Tooltip("吃东西动画名，TLM 的动画表里叫 use_mainhand:eat；模型没这条就只出声和粒子")]
         [SerializeField] private string _eatClip = "use_mainhand:eat";
+        [Tooltip("进喂蛋糕模式摆的祈求动作（TLM 的 beg：抬手求喂）。只有 geo 模型有动画表，方块模型自动跳过；留空就不摆")]
+        [SerializeField] private string _begClip = "beg";
+        [Tooltip("祈求 / 被砸 / 吃东西这几段动画互相切换时的混合时间（秒）")]
+        [SerializeField] private float _clipFadeSeconds = 0.12f;
         [Tooltip("吃东西动画最长演多久。这条动画本身是循环的，演完自动换回原来那条")]
         [SerializeField] private float _eatMaxSeconds = 2.5f;
         [Tooltip("喂下去多久之后出吃东西音效（秒，从喂的那一刻算）")]
@@ -93,10 +97,10 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _feedCooldownSeconds = 0.3f;
 
         [Header("中挡：扔蛋糕")]
-        [Tooltip("被蛋糕砸中时借这条动画演一下（TLM 里「被打」叫 attacked），演完换回原来那条")]
-        [SerializeField] private string _hurtClip = "attacked";
-        [Tooltip("受伤动画不管多长，演这么久就换回来")]
-        [SerializeField] private float _hurtMaxSeconds = 1f;
+        [Tooltip("被蛋糕砸中时混进来的那条动画（TLM 的 game_lost = 战败姿势），演完再混回祈求/原来那条")]
+        [SerializeField] private string _hurtClipName = "game_lost";
+        [Tooltip("受伤动画不管多长，演这么久就换回来（game_lost 本身有 100 秒，靠这个截断）")]
+        [SerializeField] private float _hurtSeconds = 5f;
         [Tooltip("出手点的屏幕高度（视口坐标，0 = 屏幕下沿，1 = 上沿；越负越靠屏幕外=离她越远）；屏幕 x 跟着你点的地方走，等于从手指下方扔上去")]
         [SerializeField] private float _cakeStartViewportY = -0.6f;
         [Tooltip("出手点沿视线方向离她多远（往摄像机/玩家这边推，单位是世界单位）。正交相机下屏幕位置不变，只影响真实距离：越大=越靠玩家、飞得越远")]
@@ -135,6 +139,8 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private int _comboMilestoneStep = 100;
         [Tooltip("「N连抽」的彩蛋音，留空就用现场合成的上行琶音")]
         [SerializeField] private AudioClip _milestoneClip;
+        [Tooltip("「N连抽」彩蛋粒子的尺寸倍率（模组原始尺寸 = 1，搬到手机上要放大）")]
+        [SerializeField] private float _comboParticleScale = 2f;
         [Tooltip("砸到脸上的闪红。Alpha 当强度用：1 = 纯红（原版受伤），0.5 = 半透明红，0 = 不闪")]
         [SerializeField] private Color _cakeFlashColor = new Color(1f, 0f, 0f, 0.5f);
         [Tooltip("砸到脸上的闪红时长。原版受伤是 0.5 秒")]
@@ -185,6 +191,7 @@ namespace MaidHome.Gameplay.Maid
         bool _eating;
         bool _eatPlaying;
         bool _hurtPlaying;
+        bool _begPlaying;
         int _selectedLevel = LevelLight;
         string _eatReturnClip;
         float _eatReturnTime;
@@ -257,9 +264,11 @@ namespace MaidHome.Gameplay.Maid
 
             _comboHud.Timeout = _comboTimeoutSeconds;
             _comboHud.Step = _comboMilestoneStep;
+            _comboHud.ParticleScale = _comboParticleScale;
             _comboHud.Clear();
             _headHasAnimated = false;
 
+            PlayBegAnimation();
             IsActive = true;
             return true;
         }
@@ -403,7 +412,7 @@ namespace MaidHome.Gameplay.Maid
 
         IEnumerator LightRoutine()
         {
-            yield return EatSequence(Time.time, _voiceEvent, _lines, true, true);
+            yield return EatSequence(Time.time, _voiceEvent, _lines, true, true, false);
             FinishEating();
         }
 
@@ -461,13 +470,13 @@ namespace MaidHome.Gameplay.Maid
             // 砸到脸那一刻才算"喂下去"，吃东西那套从这时候开始算；
             // 粒子已经在砸中的时候喷过了，被扔的蛋糕也不再演"自己拿着吃"的动画
             yield return EatSequence(Time.time, heavy ? _heavyVoiceEvent : _cakeVoiceEvent,
-                heavy ? _heavyLines : _cakeLines, false, false);
+                heavy ? _heavyLines : _cakeLines, false, false, true);
             FinishEating();
         }
 
         /// <summary>吃东西那一套：动作 + 吃东西音效 + 粒子 + 说话，时间和 delay 都从 start 那一刻算</summary>
         IEnumerator EatSequence(float start, string voiceEvent, string[] lines, bool delayedParticles,
-            bool playEatAnimation)
+            bool playEatAnimation, bool hurt)
         {
             float eatSeconds = playEatAnimation ? PlayEatAnimation() : 0f;
 
@@ -481,7 +490,7 @@ namespace MaidHome.Gameplay.Maid
             }
 
             yield return WaitUntil(start + _voiceDelay);
-            SaySomething(voiceEvent, lines);
+            SaySomething(voiceEvent, lines, hurt);
 
             yield return WaitUntil(start + eatSeconds);
             StopEatAnimation();
@@ -630,6 +639,7 @@ namespace MaidHome.Gameplay.Maid
 
             StopEatAnimation();
             StopHurtAnimation();
+            StopBegAnimation();
             _twisting = false;
             _headHasAnimated = false;
             _comboHud.Clear();
@@ -661,6 +671,70 @@ namespace MaidHome.Gameplay.Maid
         // ---------- 吃东西动画 ----------
 
         /// <summary>
+        /// 进喂蛋糕模式就摆出「求喂」的姿势（TLM 的 beg），混 0.12 秒进去；
+        /// 方块模型（MaidSimpleBedrockAnimator）没有动画表，自动跳过。
+        /// </summary>
+        void PlayBegAnimation()
+        {
+            _begPlaying = false;
+            if (IsSimpleModel() || string.IsNullOrEmpty(_begClip))
+            {
+                return;
+            }
+
+            BedrockAnimationPlayer player = GetPlayer();
+            if (player == null || !player.HasClip(_begClip))
+            {
+                return;
+            }
+
+            _begPlaying = player.PlayBlended(_begClip, _clipFadeSeconds);
+        }
+
+        /// <summary>退出模式时把祈求姿势交还给游走状态机，不然她会一直举着手</summary>
+        void StopBegAnimation()
+        {
+            if (!_begPlaying)
+            {
+                return;
+            }
+
+            _begPlaying = false;
+            BedrockAnimationPlayer player = GetPlayer();
+            if (player != null)
+            {
+                // 光靠 InvalidateAnimation 不够：状态机这会儿还是暂停的（女仆面板开着），
+                // 它不会自己把 idle 播回来，所以真把祈求停掉再让她立刻回 idle
+                player.StopClip(_begClip);
+            }
+
+            MaidWanderer wanderer = _agent != null ? _agent.Wanderer : null;
+            if (wanderer != null)
+            {
+                wanderer.ReplayAnimation();
+            }
+        }
+
+        /// <summary>
+        /// 借动画之前记下"该回到哪条"：模式里以祈求（beg）为基准姿势，吃东西/被砸都是从它上面混出来，
+        /// 所以要回 beg；没有 beg 的时候才回当前正在播的那条。
+        /// 不这么记的话，进场那 0.12 秒淡入还没结束时 PlayingClipName 会指到 idle。
+        /// </summary>
+        void RecordReturnClip(out string clip, out float time)
+        {
+            BedrockAnimationPlayer player = GetPlayer();
+            if (_begPlaying && player != null && player.HasClip(_begClip))
+            {
+                clip = _begClip;
+                time = 0f;
+                return;
+            }
+
+            clip = player != null ? player.PlayingClipName : null;
+            time = player != null ? player.PlayingTime : 0f;
+        }
+
+        /// <summary>
         /// 吃东西动作，返回要演多久（没动作就返回 0）。
         /// GeckoLib 模型借她自己的 use_mainhand:eat；SimpleBedrockModel 没有动画表，
         /// 让 MaidSimpleBedrockAnimator 现算抬手。
@@ -681,8 +755,13 @@ namespace MaidHome.Gameplay.Maid
                 return 0f;
             }
 
-            _eatReturnClip = player.PlayingClipName;
-            _eatReturnTime = player.PlayingTime;
+            // game_lost 还在演的时候只出声，不抢动画：那 5 秒要连续演完
+            if (_hurtPlaying)
+            {
+                return 0f;
+            }
+
+            RecordReturnClip(out _eatReturnClip, out _eatReturnTime);
             if (!player.Play(_eatClip))
             {
                 _eatReturnClip = null;
@@ -708,18 +787,27 @@ namespace MaidHome.Gameplay.Maid
             }
 
             _eatPlaying = false;
+            // 受伤动画还在演就别抢回来，等它自己演完（它会把 beg 混回来）
+            if (_hurtPlaying)
+            {
+                _eatReturnClip = null;
+                _eatReturnTime = 0f;
+                return;
+            }
+
             BedrockAnimationPlayer player = GetPlayer();
             if (player != null && !string.IsNullOrEmpty(_eatReturnClip) && player.HasClip(_eatReturnClip))
             {
-                player.Play(_eatReturnClip, _eatReturnTime);
+                player.PlayBlended(_eatReturnClip, _eatReturnTime, _clipFadeSeconds);
             }
             else
             {
                 MaidWanderer wanderer = _agent != null ? _agent.Wanderer : null;
                 if (wanderer != null)
                 {
-                    // 不知道原来在播什么，就让状态机重播一次 idle / walk
-                    wanderer.InvalidateAnimation();
+                    // 不知道原来在播什么，就让她立刻重播 idle / walk
+                    // （只 invalidate 的话，暂停中状态机不会自己重播，她会停在借来的姿势上）
+                    wanderer.ReplayAnimation();
                 }
             }
 
@@ -756,20 +844,25 @@ namespace MaidHome.Gameplay.Maid
         /// </summary>
         void PlayHurtAnimation()
         {
-            if (_hurtPlaying || _agent == null || string.IsNullOrEmpty(_hurtClip))
+            if (_hurtPlaying || _agent == null || string.IsNullOrEmpty(_hurtClipName))
             {
                 return;
             }
 
             BedrockAnimationPlayer player = GetPlayer();
-            if (player == null || !player.HasClip(_hurtClip))
+            if (player == null || !player.HasClip(_hurtClipName))
             {
                 return;
             }
 
-            _hurtReturnClip = player.PlayingClipName;
-            _hurtReturnTime = player.PlayingTime;
-            if (!player.Play(_hurtClip))
+            RecordReturnClip(out _hurtReturnClip, out _hurtReturnTime);
+            // 先把祈求停掉：停了的 clip 不再参与混合，不然它会一直压在 game_lost 上面
+            if (_begPlaying)
+            {
+                player.StopClip(_begClip);
+            }
+
+            if (!player.PlayBlended(_hurtClipName, _clipFadeSeconds))
             {
                 _hurtReturnClip = null;
                 return;
@@ -781,12 +874,36 @@ namespace MaidHome.Gameplay.Maid
 
         IEnumerator RestoreHurt(BedrockAnimationPlayer player)
         {
-            float seconds = Mathf.Clamp(player.ClipLength(_hurtClip), 0.2f,
-                Mathf.Max(0.2f, _hurtMaxSeconds));
-            yield return new WaitForSeconds(seconds);
+            yield return HoldHurt(player, Mathf.Max(0.2f, _hurtSeconds));
             _hurtRoutine = null;
             _hurtPlaying = false;
             ReturnToHurtClip(player);
+        }
+
+        /// <summary>
+        /// 这 _hurtSeconds 秒里受伤动画必须一直在播：被别的东西（吃东西协程 / 游走状态机 / 别的玩法）
+        /// 顶掉就立刻顶回来，并且警告一次，方便查到底是谁在动。
+        /// </summary>
+        IEnumerator HoldHurt(BedrockAnimationPlayer player, float seconds)
+        {
+            float end = Time.unscaledTime + seconds;
+            bool warned = false;
+            while (Time.unscaledTime < end)
+            {
+                if (player != null && !player.IsPlayingClip(_hurtClipName))
+                {
+                    if (!warned)
+                    {
+                        warned = true;
+                        Debug.LogWarning("受伤动画 " + _hurtClipName + " 被 " + player.PlayingClipName
+                            + " 顶掉了，已顶回来", this);
+                    }
+
+                    player.Play(_hurtClipName);
+                }
+
+                yield return null;
+            }
         }
 
         void StopHurtAnimation()
@@ -809,18 +926,26 @@ namespace MaidHome.Gameplay.Maid
 
         void ReturnToHurtClip(BedrockAnimationPlayer player)
         {
+            // 她正在吃那一口就先别抢动画，吃完自己会回 beg
+            if (_eatPlaying)
+            {
+                _hurtReturnClip = null;
+                _hurtReturnTime = 0f;
+                return;
+            }
+
             // 退出模式时也得换回来，不然她会一直停在被打的姿势
             if (player != null && !string.IsNullOrEmpty(_hurtReturnClip) && player.HasClip(_hurtReturnClip))
             {
-                player.Play(_hurtReturnClip, _hurtReturnTime);
+                player.PlayBlended(_hurtReturnClip, _hurtReturnTime, _clipFadeSeconds);
             }
             else
             {
                 MaidWanderer wanderer = _agent != null ? _agent.Wanderer : null;
                 if (wanderer != null)
                 {
-                    // 不知道原来在播什么，就让状态机重播一次 idle / walk
-                    wanderer.InvalidateAnimation();
+                    // 不知道原来在播什么，就让她立刻重播 idle / walk
+                    wanderer.ReplayAnimation();
                 }
             }
 
@@ -899,16 +1024,19 @@ namespace MaidHome.Gameplay.Maid
             _source.PlayOneShot(clip, 1f);
         }
 
-        void SaySomething(string voiceEvent, string[] lines)
+        void SaySomething(string voiceEvent, string[] lines, bool hurt)
         {
             if (_agent != null && !string.IsNullOrEmpty(voiceEvent))
             {
                 MaidAudioService.Play(_agent, voiceEvent, false, _soundVolume);
             }
 
-            if (_panel != null && lines != null && lines.Length > 0)
+            if (_agent != null && lines != null && lines.Length > 0)
             {
-                _panel.ShowLine(lines[UnityEngine.Random.Range(0, lines.Length)], _lineSeconds);
+                string line = hurt
+                    ? MaidEasterEgg.PickHurt(_agent, lines)
+                    : lines[UnityEngine.Random.Range(0, lines.Length)];
+                MaidChatBubble.Show(_agent, line, _lineSeconds);
             }
         }
 

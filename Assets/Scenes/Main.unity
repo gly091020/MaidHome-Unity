@@ -668,7 +668,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u6247\u8138"
+  m_Text: "\u73A9\u8138"
 --- !u!222 &268118281
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -2019,23 +2019,24 @@ MonoBehaviour:
   _pokeReactionCooldownSeconds: 0
   _hitPaddingPixels: 6
   _earZoneScale: 0.75
-  _faceEyeUvMin: {x: 1, y: 5}
-  _faceEyeUvSize: {x: 2, y: 2}
+  _faceEyeUvMin: {x: 0, y: 4}
+  _faceEyeUvSize: {x: 4, y: 4}
   _facePixels: 8
   _turnSeconds: 0.35
   _voiceVolume: 6
   _flashColor: {r: 1, g: 0, b: 0, a: 0.5}
   _flashSeconds: 0.5
   _lineSeconds: 1
-  _complainCooldownSeconds: 1
-  _slapLineCooldownSeconds: 0.6
-  _hurtClip: attacked
-  _hurtMaxSeconds: 1
+  _complainCooldownSeconds: 0.5
+  _slapLineCooldownSeconds: 0.5
+  _hurtClipName: game_lost
+  _hurtSeconds: 5
   _showZones: 0
   _comboSizeRatio: 0.085
   _comboTopRatio: 0.035
   _milestoneSizeRatio: 0.11
   _milestoneTopRatio: 0.12
+  _comboParticleScale: 2
   _panel: {fileID: 1823825232}
 --- !u!114 &516342209
 MonoBehaviour:
@@ -2087,6 +2088,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _eatClip: use_mainhand:eat
+  _begClip: beg
+  _clipFadeSeconds: 0.12
   _eatMaxSeconds: 2.5
   _eatSoundDelay: 0.2
   _soundVolume: 6
@@ -2108,7 +2111,7 @@ MonoBehaviour:
   _particleDelay: 1
   _particleGravity: 0.5
   _voiceEvent: maid.mode.feed
-  _voiceDelay: 1.7
+  _voiceDelay: 0
   _lineSeconds: 4
   _lines:
   - "\u5514\u2026\u2026\u597D\u5403\uFF0C\u8C22\u8C22\u4E3B\u4EBA\uFF01"
@@ -2119,8 +2122,8 @@ MonoBehaviour:
   _panel: {fileID: 631139505}
   _defaultLevel: 1
   _feedCooldownSeconds: 0.1
-  _hurtClip: attacked
-  _hurtMaxSeconds: 1
+  _hurtClipName: game_lost
+  _hurtSeconds: 5
   _cakeStartViewportY: 0.5
   _cakeStartDepth: 3
   _cakeFlySeconds: 0.2
@@ -2141,6 +2144,7 @@ MonoBehaviour:
   _comboTimeoutSeconds: 2.5
   _comboMilestoneStep: 100
   _milestoneClip: {fileID: 0}
+  _comboParticleScale: 2
   _cakeFlashColor: {r: 1, g: 0, b: 0, a: 0.5}
   _cakeFlashSeconds: 0.5
   _cakeVoiceEvent: maid.ai.hurt
@@ -2463,7 +2467,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 
+  m_Text: "\u6478\u5C3E\u5DF4"
 --- !u!222 &598998278
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -3844,6 +3848,59 @@ MonoBehaviour:
   _hintText: {fileID: 276306531}
   _sniffButton: {fileID: 228709530}
   _exitButton: {fileID: 586231095}
+--- !u!1 &936577916
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 936577918}
+  - component: {fileID: 936577917}
+  m_Layer: 0
+  m_Name: MaidChatBubble
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &936577917
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 936577916}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 743df5a8d16c4839a07e7a5dc22e087c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _background: {fileID: 2800000, guid: 28881cbb7e6b41649bd0d4de6d697968, type: 3}
+  _unitsPerPixel: 0.025
+  _anchorPixels: 10
+  _uiScale: 8
+  _sortingOrder: 100
+  _minSeconds: 4
+  _maxHalfWidthFraction: 0.48
+  _maxLineHeightFraction: 0.07
+  _maxStackHeightFraction: 0.5
+  _maxTopViewport: 0.95
+--- !u!4 &936577918
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 936577916}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 8
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &962767124
 GameObject:
   m_ObjectHideFlags: 0
@@ -6093,7 +6150,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 
+  m_Text: "\u5582\u86CB\u7CD5"
 --- !u!222 &1912787907
 CanvasRenderer:
   m_ObjectHideFlags: 0

@@ -89,6 +89,11 @@ namespace MaidHome.Gameplay.Maid
             agent.Id = assets.Maid != null ? assets.Maid.Id : "";
             agent.Save = assets.Maid;
 
+            if (root.GetComponent<MaidIdleBubble>() == null)
+            {
+                root.AddComponent<MaidIdleBubble>();
+            }
+
             return root;
         }
     }

@@ -55,6 +55,9 @@ namespace MaidHome.Gameplay.Maid
         /// <summary>「N连抽」距屏幕顶部占屏幕高度的比例</summary>
         public float MilestoneTopRatio { get; set; }
 
+        /// <summary>彩带/粒子的尺寸倍率（1 = 模组原始尺寸）</summary>
+        public float ParticleScale { get; set; }
+
         /// <summary>这一次 Confirm 是不是刚好踩到彩蛋</summary>
         public bool MilestoneHit { get; private set; }
 
@@ -80,6 +83,7 @@ namespace MaidHome.Gameplay.Maid
             ComboTopRatio = 0.035f;
             MilestoneSizeRatio = 0.11f;
             MilestoneTopRatio = 0.12f;
+            ParticleScale = 2f;
         }
 
         public void Clear()
@@ -190,6 +194,8 @@ namespace MaidHome.Gameplay.Maid
         {
             float progress = age / EffectSeconds;
             float unit = Screen.width / 1000f;
+            // 粒子单独放大：模组那套尺寸是按 Minecraft 的 GUI 刻度调的，搬到手机上太小
+            float particleUnit = unit * Mathf.Max(0.1f, ParticleScale);
             for (int side = -1; side <= 1; side += 2)
             {
                 for (int band = 0; band < 8; band++)
@@ -219,7 +225,9 @@ namespace MaidHome.Gameplay.Maid
                     float travel = 1f - (1f - t) * (1f - t);
                     float seed = (i * 37 + (side + 1) * 11) % 97 / 97f;
                     float distance = (0.12f + seed * 0.20f) * Screen.width * travel;
-                    float x = side < 0 ? 4f * unit + distance : Screen.width - 4f * unit - distance;
+                    float x = side < 0
+                        ? 4f * particleUnit + distance
+                        : Screen.width - 4f * particleUnit - distance;
                     float y = Screen.height * (0.07f + (i * 19) % 86 / 100f)
                         - Screen.height * (0.04f + seed * 0.08f) * Mathf.Sin(t * Mathf.PI)
                         + t * t * Screen.height * 0.09f;
@@ -231,7 +239,7 @@ namespace MaidHome.Gameplay.Maid
 
                     float hue = ((now % HueCycleSeconds) / HueCycleSeconds + seed) % 1f;
                     Color color = Rainbow(hue, 0.62f, 1f, alpha);
-                    DrawParticle(i % 4, x, y, unit, i * 31f + side * t * 240f, color, alpha);
+                    DrawParticle(i % 4, x, y, particleUnit, i * 31f + side * t * 240f, color, alpha);
                 }
             }
         }

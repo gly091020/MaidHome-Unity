@@ -136,10 +136,10 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _slapLineCooldownSeconds = 0.6f;
 
         [Header("受伤动画")]
-        [Tooltip("被拉疼 / 被戳 / 被扇的时候借这条动画演一下（TLM 里「被打」叫 attacked）")]
-        [SerializeField] private string _hurtClip = "attacked";
-        [Tooltip("不管动画多长，演这么久就换回来")]
-        [SerializeField] private float _hurtMaxSeconds = 1f;
+        [Tooltip("被拉疼 / 被戳 / 被扇的时候借这条动画演一下（TLM 的 game_lost = 战败姿势；想换回原来的 attacked 就直接改这里）")]
+        [SerializeField] private string _hurtClipName = "game_lost";
+        [Tooltip("不管动画多长，演这么久就换回来（game_lost 本身有 100 秒，靠这个截断）")]
+        [SerializeField] private float _hurtSeconds = 5f;
 
         [Header("调试")]
         [Tooltip("把触发范围画在屏幕上（红=眼睛 黄=脸颊 青=耳朵 蓝=整张脸），运行时按 F8 也能开关")]
@@ -154,6 +154,8 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _milestoneSizeRatio = 0.11f;
         [Tooltip("「N连抽」距屏幕顶部占屏幕高度的比例")]
         [SerializeField] private float _milestoneTopRatio = 0.12f;
+        [Tooltip("100 连彩蛋粒子的尺寸倍率（模组原始尺寸 = 1，搬到手机上要放大）")]
+        [SerializeField] private float _comboParticleScale = 2f;
 
         // 台词照抄 moreanimation 的 zh_cn
         static readonly string[] EarLines =
@@ -351,6 +353,7 @@ namespace MaidHome.Gameplay.Maid
             _comboHud.ComboTopRatio = _comboTopRatio;
             _comboHud.MilestoneSizeRatio = _milestoneSizeRatio;
             _comboHud.MilestoneTopRatio = _milestoneTopRatio;
+            _comboHud.ParticleScale = _comboParticleScale;
             _comboHud.Clear();
             _panelCombo = -1;
             IsActive = true;
@@ -398,6 +401,13 @@ namespace MaidHome.Gameplay.Maid
             if (_panel != null)
             {
                 _panel.Hide();
+            }
+
+            // 方块模型（MaidSimpleBedrockAnimator）不会每帧写头，退出时要把头还回动画姿势，
+            // 不然扇歪的头会一直留着（gecko 模型下一帧就会自己覆盖，没影响）
+            if (_headHasAnimated && _rig != null && _rig.Head != null)
+            {
+                _rig.Head.localRotation = _headAnimated;
             }
 
             _agent = null;
@@ -1167,7 +1177,7 @@ namespace MaidHome.Gameplay.Maid
             if (Time.unscaledTime - _lastSlapLineAt > _slapLineCooldownSeconds)
             {
                 _lastSlapLineAt = Time.unscaledTime;
-                ShowLine(Pick(SlapLines));
+                ShowLine(MaidEasterEgg.PickHurt(_agent, SlapLines));
             }
         }
 
@@ -1216,17 +1226,14 @@ namespace MaidHome.Gameplay.Maid
         void ComplainNow(string[] lines)
         {
             MaidDamageFlash.Flash(_agent != null ? _agent.gameObject : null, _flashColor, _flashSeconds);
-            ShowLine(Pick(lines));
+            ShowLine(MaidEasterEgg.PickHurt(_agent, lines));
             MaidAudioService.Play(_agent, MaidSoundId.Hurt, false, _voiceVolume);
             PlayHurtAnimation();
         }
 
         void ShowLine(string line)
         {
-            if (_panel != null)
-            {
-                _panel.ShowLine(line, _lineSeconds);
-            }
+            MaidChatBubble.Show(_agent, line, _lineSeconds);
         }
 
         void PlaySlapSound()
@@ -1605,11 +1612,6 @@ namespace MaidHome.Gameplay.Maid
             return t * t * (3f - 2f * t);
         }
 
-        static string Pick(string[] lines)
-        {
-            return lines[UnityEngine.Random.Range(0, lines.Length)];
-        }
-
         // ---------- 受伤动画 ----------
 
         /// <summary>
@@ -1618,20 +1620,20 @@ namespace MaidHome.Gameplay.Maid
         /// </summary>
         void PlayHurtAnimation()
         {
-            if (_hurtPlaying || _agent == null || string.IsNullOrEmpty(_hurtClip))
+            if (_hurtPlaying || _agent == null || string.IsNullOrEmpty(_hurtClipName))
             {
                 return;
             }
 
             BedrockAnimationPlayer player = _agent.GetComponent<BedrockAnimationPlayer>();
-            if (player == null || !player.HasClip(_hurtClip))
+            if (player == null || !player.HasClip(_hurtClipName))
             {
                 return;
             }
 
             _hurtReturnClip = player.PlayingClipName;
             _hurtReturnTime = player.PlayingTime;
-            if (!player.Play(_hurtClip))
+            if (!player.Play(_hurtClipName))
             {
                 _hurtReturnClip = null;
                 return;
@@ -1643,11 +1645,36 @@ namespace MaidHome.Gameplay.Maid
 
         IEnumerator RestoreHurt(BedrockAnimationPlayer player)
         {
-            float seconds = Mathf.Clamp(player.ClipLength(_hurtClip), 0.2f, Mathf.Max(0.2f, _hurtMaxSeconds));
-            yield return new WaitForSeconds(seconds);
+            yield return HoldHurt(player, Mathf.Max(0.2f, _hurtSeconds));
             _hurtRoutine = null;
             _hurtPlaying = false;
             ReturnToHurtClip(player);
+        }
+
+        /// <summary>
+        /// 这 _hurtSeconds 秒里受伤动画必须一直在播：被别的东西（吃东西协程 / 游走状态机 / 别的玩法）
+        /// 顶掉就立刻顶回来，并且警告一次，方便查到底是谁在动。
+        /// </summary>
+        IEnumerator HoldHurt(BedrockAnimationPlayer player, float seconds)
+        {
+            float end = Time.unscaledTime + seconds;
+            bool warned = false;
+            while (Time.unscaledTime < end)
+            {
+                if (player != null && !player.IsPlayingClip(_hurtClipName))
+                {
+                    if (!warned)
+                    {
+                        warned = true;
+                        Debug.LogWarning("受伤动画 " + _hurtClipName + " 被 " + player.PlayingClipName
+                            + " 顶掉了，已顶回来", this);
+                    }
+
+                    player.Play(_hurtClipName);
+                }
+
+                yield return null;
+            }
         }
 
         void StopHurtAnimation()
@@ -1680,8 +1707,9 @@ namespace MaidHome.Gameplay.Maid
                 MaidWanderer wanderer = _agent != null ? _agent.Wanderer : null;
                 if (wanderer != null)
                 {
-                    // 不知道原来在播什么，就让状态机重播一次 idle / walk
-                    wanderer.InvalidateAnimation();
+                    // 不知道原来在播什么，就让她立刻重播 idle / walk
+                    // （只 invalidate 的话，暂停中状态机不会自己重播，她会停在借来的姿势上）
+                    wanderer.ReplayAnimation();
                 }
             }
 

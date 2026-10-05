@@ -87,27 +87,35 @@ namespace MaidHome.Gameplay.Maid
         public bool IsActive { get; private set; }
 
         readonly List<MaidTailChain> _chains = new List<MaidTailChain>();
+        readonly List<TailGrab> _grabs = new List<TailGrab>();
+        readonly List<PointerInput.Pointer> _pointers = new List<PointerInput.Pointer>();
 
         MaidAgent _agent;
-        MaidTailChain _selected;
+        MaidTailChain _lastTouched;
         public MaidTailPanel _panel;
         AudioSource _source;
         AudioClip _sniffClip;
         Coroutine _sniffRoutine;
 
-        bool _grabbed;
         bool _sniffing;
-        bool _overstretched;
         // 吸一口前的正交 size，退出/中断时要还原，不然相机会一直停在放大状态
         bool _hasCameraSize;
         float _cameraBaseSize;
-        Vector2 _dragOrigin;
-        float _startYaw;
-        float _startPitch;
-        float _targetYaw;
-        float _targetPitch;
         float _simAccumulator;
         float _lastComplainTime = -100f;
+
+        /// <summary>一根手指对应一条尾巴；多指时各拖各的，互不干扰</summary>
+        sealed class TailGrab
+        {
+            public int FingerId;
+            public MaidTailChain Chain;
+            public Vector2 Origin;
+            public float StartYaw;
+            public float StartPitch;
+            public float TargetYaw;
+            public float TargetPitch;
+            public bool Overstretched;
+        }
 
         public bool Begin(MaidAgent agent, AudioClip sniffClip)
         {
@@ -144,7 +152,7 @@ namespace MaidHome.Gameplay.Maid
 
             _agent = agent;
             _sniffClip = sniffClip;
-            _selected = _chains[0];
+            _lastTouched = _chains[0];
             _simAccumulator = 0f;
             EnsurePanel();
             if (_panel != null)
@@ -230,6 +238,7 @@ namespace MaidHome.Gameplay.Maid
             // 退出时让她转回来看镜头（女仆交互面板接着要开）
             TurnToCamera();
             SetParallelLayer(true);
+            ReleaseAllGrabs();
 
             if (_panel != null)
             {
@@ -244,11 +253,9 @@ namespace MaidHome.Gameplay.Maid
             }
 
             _chains.Clear();
-            _selected = null;
+            _lastTouched = null;
             _agent = null;
-            _grabbed = false;
             _sniffing = false;
-            _overstretched = false;
             _simAccumulator = 0f;
             IsActive = false;
         }
@@ -273,37 +280,75 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
-            PointerInput.Pointer pointer = PointerInput.Primary;
+            PointerInput.CopyPointers(_pointers);
+            // 先处理已经在拖的手指：只认自己那根 fingerId，别的手指按下/抬起都不影响
+            UpdateGrabs();
 
-            if (_grabbed)
-            {
-                // 松手判断放在最前面，免得指针抬在按钮上就卡住不放
-                if (!pointer.Held)
-                {
-                    Release();
-                }
-                else
-                {
-                    Drag(pointer.Position);
-                }
-
-                return;
-            }
-
-            if (_sniffing || pointer.OverUi)
+            if (_sniffing)
             {
                 return;
             }
 
-            if (pointer.Pressed)
+            for (int i = 0; i < _pointers.Count; i++)
             {
+                PointerInput.Pointer pointer = _pointers[i];
+                if (!pointer.Pressed || pointer.OverUi || FindGrab(pointer.FingerId) != null)
+                {
+                    continue;
+                }
+
                 MaidTailChain chain;
                 int bone;
                 if (TryHit(pointer.Position, out chain, out bone))
                 {
-                    Grab(chain, pointer.Position);
+                    Grab(chain, pointer);
                 }
             }
+        }
+
+        void UpdateGrabs()
+        {
+            for (int i = _grabs.Count - 1; i >= 0; i--)
+            {
+                TailGrab grab = _grabs[i];
+                PointerInput.Pointer pointer;
+                if (!TryFindPointer(grab.FingerId, out pointer) || !pointer.Held)
+                {
+                    ReleaseGrab(grab);
+                    _grabs.RemoveAt(i);
+                    continue;
+                }
+
+                Drag(grab, pointer.Position);
+            }
+        }
+
+        bool TryFindPointer(int fingerId, out PointerInput.Pointer pointer)
+        {
+            for (int i = 0; i < _pointers.Count; i++)
+            {
+                if (_pointers[i].FingerId == fingerId)
+                {
+                    pointer = _pointers[i];
+                    return true;
+                }
+            }
+
+            pointer = new PointerInput.Pointer();
+            return false;
+        }
+
+        TailGrab FindGrab(int fingerId)
+        {
+            for (int i = 0; i < _grabs.Count; i++)
+            {
+                if (_grabs[i].FingerId == fingerId)
+                {
+                    return _grabs[i];
+                }
+            }
+
+            return null;
         }
 
         void LateUpdate()
@@ -336,43 +381,54 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
-        void Grab(MaidTailChain chain, Vector2 pointer)
+        void Grab(MaidTailChain chain, PointerInput.Pointer pointer)
         {
-            _selected = chain;
-            _grabbed = true;
-            _overstretched = false;
-            _dragOrigin = pointer;
-            chain.SnapshotStart(out _startYaw, out _startPitch);
-            _targetYaw = _startYaw;
-            _targetPitch = _startPitch;
-            chain.SetTarget(_targetYaw, _targetPitch, true);
+            // 同一根尾巴被第二根手指按住：把这条链交给新手指，别两个抢着写
+            for (int i = _grabs.Count - 1; i >= 0; i--)
+            {
+                if (_grabs[i].Chain == chain)
+                {
+                    _grabs.RemoveAt(i);
+                }
+            }
+
+            TailGrab grab = new TailGrab();
+            grab.FingerId = pointer.FingerId;
+            grab.Chain = chain;
+            grab.Origin = pointer.Position;
+            chain.SnapshotStart(out grab.StartYaw, out grab.StartPitch);
+            grab.TargetYaw = grab.StartYaw;
+            grab.TargetPitch = grab.StartPitch;
+            chain.SetTarget(grab.TargetYaw, grab.TargetPitch, true);
+            _grabs.Add(grab);
+            _lastTouched = chain;
             _simAccumulator = 0f;
         }
 
-        void Drag(Vector2 pointer)
+        void Drag(TailGrab grab, Vector2 pointer)
         {
-            if (_selected == null)
+            if (grab == null || grab.Chain == null)
             {
                 return;
             }
 
-            Vector2 delta = pointer - _dragOrigin;
-            float yaw = _startYaw
+            Vector2 delta = pointer - grab.Origin;
+            float yaw = grab.StartYaw
                 + Mathf.Atan2(delta.x, _dragReferencePixels) * Mathf.Rad2Deg * _dragSensitivity;
-            float pitch = _startPitch
+            float pitch = grab.StartPitch
                 + Mathf.Atan2(delta.y, _dragReferencePixels) * Mathf.Rad2Deg * _dragSensitivity;
             yaw = SoftLimit(yaw, MaidTailChain.MaxYaw, MaidTailChain.MaxYaw);
             pitch = SoftLimit(pitch, MaidTailChain.MinPitch, MaidTailChain.MaxPitch);
-            _targetYaw = LimitStep(_targetYaw, yaw);
-            _targetPitch = LimitStep(_targetPitch, pitch);
-            _selected.SetTarget(_targetYaw, _targetPitch, true);
+            grab.TargetYaw = LimitStep(grab.TargetYaw, yaw);
+            grab.TargetPitch = LimitStep(grab.TargetPitch, pitch);
+            grab.Chain.SetTarget(grab.TargetYaw, grab.TargetPitch, true);
 
             // 拉太狠的判定：指针跑出屏幕中央那块，或者从抓住的地方拖了很长的距离
             bool over = !InSafeZone(pointer)
-                || (pointer - _dragOrigin).magnitude > _overstretchDragFraction * Screen.height;
-            if (over != _overstretched)
+                || (pointer - grab.Origin).magnitude > _overstretchDragFraction * Screen.height;
+            if (over != grab.Overstretched)
             {
-                _overstretched = over;
+                grab.Overstretched = over;
                 if (over)
                 {
                     Complain();
@@ -380,16 +436,22 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
-        void Release()
+        void ReleaseGrab(TailGrab grab)
         {
-            _grabbed = false;
-            _overstretched = false;
-            _targetYaw = 0f;
-            _targetPitch = 0f;
-            if (_selected != null)
+            if (grab != null && grab.Chain != null)
             {
-                _selected.SetTarget(0f, 0f, false);
+                grab.Chain.SetTarget(0f, 0f, false);
             }
+        }
+
+        void ReleaseAllGrabs()
+        {
+            for (int i = 0; i < _grabs.Count; i++)
+            {
+                ReleaseGrab(_grabs[i]);
+            }
+
+            _grabs.Clear();
         }
 
         void Complain()
@@ -402,13 +464,9 @@ namespace MaidHome.Gameplay.Maid
             _lastComplainTime = Time.unscaledTime;
             // 闪红、台词、受伤语音三者共用同一个冷却
             MaidDamageFlash.Flash(_agent != null ? _agent.gameObject : null, _flashColor, _flashSeconds);
-            if (_panel != null)
-            {
-                _panel.ShowLine(Pick(OverstretchLines), _lineSeconds);
-            }
-
             // 拉太狠了，放一声女仆自己的受伤语音（来自她的声音包 maid.ai.hurt）
             MaidAudioService.Play(_agent, MaidSoundId.Hurt, false, _soundVolume);
+            MaidChatBubble.Show(_agent, MaidEasterEgg.PickHurt(_agent, OverstretchLines), _lineSeconds);
         }
 
         void OnSniff()
@@ -423,8 +481,8 @@ namespace MaidHome.Gameplay.Maid
 
         IEnumerator SniffRoutine()
         {
-            MaidTailChain chain = _selected != null
-                ? _selected
+            MaidTailChain chain = _lastTouched != null
+                ? _lastTouched
                 : (_chains.Count > 0 ? _chains[0] : null);
             if (chain == null)
             {
@@ -433,8 +491,7 @@ namespace MaidHome.Gameplay.Maid
             }
 
             _sniffing = true;
-            _grabbed = false;
-            _overstretched = false;
+            ReleaseAllGrabs();
             chain.Freeze(true);
 
             // 正交相机沿视线移动看不出"凑近"，改成把 size 缩小（画面放大）
@@ -450,10 +507,7 @@ namespace MaidHome.Gameplay.Maid
             }
 
             PlaySniffSound();
-            if (_panel != null)
-            {
-                _panel.ShowLine(Pick(SniffLines), _lineSeconds);
-            }
+            MaidChatBubble.Show(_agent, Pick(SniffLines), _lineSeconds);
 
             float wait = _sniffClip != null ? Mathf.Min(_sniffClip.length, _sniffMaxSeconds) : 1f;
             yield return new WaitForSeconds(wait);

@@ -344,7 +344,69 @@ namespace MaidHome.Interop.Bedrock
             return !string.IsNullOrEmpty(name) && _entryByName.ContainsKey(name);
         }
 
+        /// <summary>这条 clip 是不是正在播（被别的动画顶掉时看得出来）</summary>
+        public bool IsPlayingClip(string name)
+        {
+            if (_animation == null)
+            {
+                _animation = GetComponent<Animation>();
+            }
+
+            return _animation != null && !string.IsNullOrEmpty(name) && _animation.IsPlaying(name);
+        }
+
         public bool Play(string name)
+        {
+            if (Prepare(name) == null)
+            {
+                return false;
+            }
+
+            _animation.Play(name);
+            return true;
+        }
+
+        public bool PlayBlended(string name, float fadeSeconds)
+        {
+            return PlayBlended(name, 0f, fadeSeconds);
+        }
+
+        /// <summary>
+        /// 淡入另一条 clip（legacy Animation 的 CrossFade）：和当前姿势混一段时间再完全接管。
+        /// "被砸一下""求喂"这种要在原姿势上混进来的动作用这个，直接 Play 是硬切。
+        /// </summary>
+        public bool PlayBlended(string name, float time, float fadeSeconds)
+        {
+            AnimationState state = Prepare(name);
+            if (state == null)
+            {
+                return false;
+            }
+
+            state.time = Mathf.Max(0f, time);
+            _animation.CrossFade(name, Mathf.Max(0.01f, fadeSeconds));
+            return true;
+        }
+
+        /// <summary>
+        /// 停掉单独一条 clip，别的照常。停掉的 clip 立刻退出混合，不会再压着后来的动画——
+        /// 借来的姿势（比如喂蛋糕的祈求 beg）要硬切给下一条时先调这个。
+        /// </summary>
+        public void StopClip(string name)
+        {
+            if (_animation == null)
+            {
+                _animation = GetComponent<Animation>();
+            }
+
+            if (_animation != null && !string.IsNullOrEmpty(name) && _animation.GetClip(name) != null)
+            {
+                _animation.Stop(name);
+            }
+        }
+
+        /// <summary>建好 clip、记下主线骨骼，返回可以摆弄的 AnimationState；失败返回 null</summary>
+        AnimationState Prepare(string name)
         {
             if (_animation == null)
             {
@@ -354,18 +416,17 @@ namespace MaidHome.Interop.Bedrock
             ClipEntry entry;
             if (_animation == null || !_entryByName.TryGetValue(name, out entry))
             {
-                return false;
+                return null;
             }
 
             if (EnsureClip(entry) == null || _animation.GetClip(name) == null)
             {
-                return false;
+                return null;
             }
 
             AnimationState state = _animation[name];
             state.speed = _speed;
             state.wrapMode = _animation.GetClip(name).wrapMode;
-            _animation.Play(name);
             CurrentClipName = name;
 
             // 主动画写到的骨骼（EnsureClip 刚保证了采样已经读出来）
@@ -375,7 +436,7 @@ namespace MaidHome.Interop.Bedrock
                 _mainBones.Add(entry.Data.Tracks[t].Path);
             }
 
-            return true;
+            return state;
         }
 
         /// <summary>clip 长度（秒），没有这条 clip 返回 0</summary>

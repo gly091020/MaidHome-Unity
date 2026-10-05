@@ -203,6 +203,25 @@ namespace MaidHome.Gameplay.Maid
             _currentClip = null;
         }
 
+        /// <summary>
+        /// 忘掉当前动画并按当前状态**立刻**重播一次。和 InvalidateAnimation 的区别：这个是"马上"，
+        /// 暂停中（女仆面板开着、借完动画还回来）也有效——只 invalidate 的话状态机被暂停，
+        /// 不会自己把 idle 播回来，她会一直停在借来的那个姿势上
+        /// （踩过：喂蛋糕退出后她还在举手祈求）。
+        /// </summary>
+        public void ReplayAnimation()
+        {
+            _currentClip = null;
+            if (!_paused && _state == State.Walk)
+            {
+                PlayWalk();
+            }
+            else
+            {
+                PlayIdle();
+            }
+        }
+
         IEnumerator FaceDirectionRoutine(Quaternion target, float seconds)
         {
             Quaternion start = transform.rotation;
