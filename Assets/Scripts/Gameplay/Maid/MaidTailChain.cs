@@ -5,12 +5,15 @@ namespace MaidHome.Gameplay.Maid
 {
     /// <summary>
     /// 一条尾巴的骨骼链 + 弹簧模拟，参数照抄 moreanimation 的 TailInteractionState。
-    /// 骨骼识别规则也照抄 TailGroups：名字是 tail[数字] / body_tail[数字]，
-    /// 或者叫 wb[数字] 且祖先里有 FOX（酒狐模型的小狐狸尾巴）。
+    /// 骨骼识别照抄 TailGroups 再放宽一点：名字带 tail（foxTail / Tail_1 都算，但排掉
+    /// ponytail / hair / coat 这些明显不是尾巴的）、shippo、尾巴，或者 wb[数字] 且祖先里有 FOX；
+    /// 分叉的尾巴从分叉点起每条分支各自成一条链（多尾模型）。
     /// </summary>
     public sealed class MaidTailChain
     {
         public const int SegmentCount = 7;
+        /// <summary>一条尾巴最多几节骨骼（防止链一路走下去把尾巴后面的东西也带上）</summary>
+        public const int MaxChainBones = 24;
         public const float MaxYaw = 55f;
         public const float MinPitch = -40f;
         public const float MaxPitch = 50f;
@@ -199,7 +202,10 @@ namespace MaidHome.Gameplay.Maid
         /// 在动画姿势之上叠一层偏移。alpha 是"离上一小步过去多久"（0~1），用来把 20Hz 的弹簧插成平滑的。
         public void Apply(float pitchSign, float yawSign, float zFollow, float alpha)
         {
-            alpha = Mathf.Clamp01(alpha);
+            // 冻住的时候 Step 不再走积分，_prev 会停在"冻住前那一刻"，而 _yaw 是当时的值；
+            // 这时候还按 alpha 插值，尾巴就会在两步之间来回跳（看起来是两帧抽搐一下）。
+            // 固定/吸一口期间必须直接用当前值。
+            alpha = _frozen ? 1f : Mathf.Clamp01(alpha);
             for (int i = 0; i < _bones.Length; i++)
             {
                 Transform bone = _bones[i];
@@ -246,12 +252,39 @@ namespace MaidHome.Gameplay.Maid
             List<Transform> all = new List<Transform>();
             Collect(root, all);
 
+            // 全部子骨骼（不分名字）：尾巴中段常常挂在 bone56 这种匿名骨骼上，
+            // 只跟着"名字像尾巴"的子骨骼走的话，链会在第一节就断掉，真正那几块尾巴网格就不受控了
+            Dictionary<Transform, List<Transform>> allChildren = new Dictionary<Transform, List<Transform>>();
+            for (int i = 0; i < all.Count; i++)
+            {
+                // 根节点的 parent 是 null（女仆模型根可能直接摆在场景里），
+                // Dictionary 不接受 null 键，跳过它——它本来也不会是谁的子节点
+                if (all[i].parent == null)
+                {
+                    continue;
+                }
+
+                List<Transform> list;
+                if (!allChildren.TryGetValue(all[i].parent, out list))
+                {
+                    list = new List<Transform>();
+                    allChildren.Add(all[i].parent, list);
+                }
+
+                list.Add(all[i]);
+            }
+
             // 父节点 -> 属于尾巴的子节点
             Dictionary<Transform, List<Transform>> children = new Dictionary<Transform, List<Transform>>();
             for (int i = 0; i < all.Count; i++)
             {
                 Transform node = all[i];
                 if (!IsTail(node))
+                {
+                    continue;
+                }
+
+                if (node.parent == null)
                 {
                     continue;
                 }
@@ -274,17 +307,14 @@ namespace MaidHome.Gameplay.Maid
                     continue;
                 }
 
-                if (Count(children, node) > 1)
-                {
-                    continue;
-                }
-
+                // 分叉的尾巴（多尾/毛束分成几股）不要整条丢掉：从分叉点往下每条分支各自成一条链，
+                // 分叉点自己会因为"NoGeometry"被筛掉
                 List<Transform> chain = new List<Transform>();
                 Transform next = node;
-                while (next != null && !chain.Contains(next))
+                while (next != null && !chain.Contains(next) && chain.Count < MaxChainBones)
                 {
                     chain.Add(next);
-                    next = Single(children, next);
+                    next = Single(allChildren, next);
                 }
 
                 if (!HasGeometry(chain))
@@ -321,7 +351,20 @@ namespace MaidHome.Gameplay.Maid
                 return true;
             }
 
-            if (!IsNumbered(name, "wb"))
+            string flat = name.Replace("_", "").Replace("-", "").Replace(".", "").Replace(" ", "");
+            // 简单模型（SimpleBedrockModel）的骨骼名是模型作者随手起的：foxTail / Tail_1 / shippo 都可能，
+            // 只要名字里带 tail 就算，但排掉"头发/衣服"这些明显不是尾巴的
+            if (flat.Contains("tail") && !ContainsAny(flat, NotTailWords))
+            {
+                return true;
+            }
+
+            if (flat.Contains("shippo") || name.Contains("尾巴"))
+            {
+                return true;
+            }
+
+            if (!IsNumbered(flat, "wb"))
             {
                 return false;
             }
@@ -337,6 +380,22 @@ namespace MaidHome.Gameplay.Maid
                 }
 
                 parent = parent.parent;
+            }
+
+            return false;
+        }
+
+        /// <summary>名字里带 tail 但不是尾巴的词（马尾、外套、各种"细节"）</summary>
+        static readonly string[] NotTailWords = { "ponytail", "hair", "detail", "retail", "tailor", "coat", "skirt", "cloth", "dress", "shirt", "tailwrap" };
+
+        static bool ContainsAny(string text, string[] words)
+        {
+            for (int i = 0; i < words.Length; i++)
+            {
+                if (text.Contains(words[i]))
+                {
+                    return true;
+                }
             }
 
             return false;
