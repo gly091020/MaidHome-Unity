@@ -18,15 +18,15 @@ MonoBehaviour:
   _headStartWidthRatio: 0.95
   _headStartDepthRatio: 0.35
   _headStartAboveRatio: 0.2
-  _rubRollDegrees: 8
-  _rubYawDegrees: 5
+  _rubRollDegrees: 20
+  _rubYawDegrees: 7
   _rubSmooth: 12
   _rubStep: 0.06
   _rubVolume: 1
   _rubClip: {fileID: 0}
-  _rubIgniteSpeed: 2.5
+  _rubIgniteSpeed: 1.5
   _rubHeatRate: 1.2
-  _rubHeatDecay: 0.8
+  _rubHeatDecay: 0.5
   _firePrefab: {fileID: 3654678169611050807, guid: 3f6600885c81cd4408e26a237031138d, type: 3}
   _fireScale: 0.45
   _fireCameraOffset: {x: 0, y: 0, z: 0}
