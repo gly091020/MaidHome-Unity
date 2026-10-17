@@ -13,9 +13,7 @@ namespace MaidHome.Core.Storage
     [DisallowMultipleComponent]
     public sealed class PublicStorageGate : MonoBehaviour
     {
-        // 版本号故意换了：旧版本已经写过 maidhome.public_storage_asked，
-        // 那会挡住这次新加的说明弹窗。
-        const string AskedKey = "maidhome.public_storage_asked_v2";
+        const string AskedKey = "maidhome.public_storage_asked";
 
         static PublicStorageGate _instance;
 
