@@ -135,12 +135,6 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _complainCooldownSeconds = 1f;
         [SerializeField] private float _slapLineCooldownSeconds = 0.6f;
 
-        [Header("受伤动画")]
-        [Tooltip("被拉疼 / 被戳 / 被扇的时候借这条动画；有 game_lost2 时优先用 game_lost2。识别到头时只驱动 head 子树")]
-        [SerializeField] private string _hurtClipName = "game_lost";
-        [Tooltip("不管动画多长，演这么久就换回来（game_lost 本身有 100 秒，靠这个截断）")]
-        [SerializeField] private float _hurtSeconds = 5f;
-
         [Header("调试")]
         [Tooltip("把触发范围画在屏幕上（红=眼睛 黄=脸颊 青=耳朵 蓝=整张脸），运行时按 F8 也能开关")]
         [SerializeField] private bool _showZones;
@@ -291,6 +285,7 @@ namespace MaidHome.Gameplay.Maid
         int _strokeDirection;
         int _lastSlapDirection;
         float _lastSlapAt = -100f;
+        bool _slapCryHeld;
 
         readonly MaidSlapComboHud _comboHud = new MaidSlapComboHud();
         int _panelCombo = -1;
@@ -298,20 +293,6 @@ namespace MaidHome.Gameplay.Maid
         float _lastPokeReactionAt = -100f;
         float _lastSlapLineAt = -100f;
         float _lastPokeAt = -100f;
-
-        Coroutine _hurtRoutine;
-        bool _hurtPlaying;
-        bool _hurtPartial;
-        string _activeHurtClip;
-        readonly List<BedrockBoneTrack> _hurtTracks = new List<BedrockBoneTrack>();
-        readonly List<Transform> _hurtBones = new List<Transform>();
-        readonly List<Vector3> _hurtRestPositions = new List<Vector3>();
-        readonly List<Quaternion> _hurtRestRotations = new List<Quaternion>();
-        readonly List<Vector3> _hurtRestScales = new List<Vector3>();
-        float _hurtLength;
-        float _hurtTime;
-        string _hurtReturnClip;
-        float _hurtReturnTime;
 
         static Texture2D _ellipse;
 
@@ -443,6 +424,7 @@ namespace MaidHome.Gameplay.Maid
             _comboHud.RateUnit = "下/秒";
             _comboHud.Clear();
             _panelCombo = -1;
+            _slapCryHeld = false;
             IsActive = true;
             FaceCamera();
             return true;
@@ -483,7 +465,6 @@ namespace MaidHome.Gameplay.Maid
 
         void Release()
         {
-            StopHurtAnimation();
             ClearEars();
             _presses.Clear();
             _faceDrag = null;
@@ -501,6 +482,12 @@ namespace MaidHome.Gameplay.Maid
             if (_headHasAnimated && _rig != null && _rig.Head != null)
             {
                 _rig.Head.localRotation = _headAnimated;
+            }
+
+            if (_slapCryHeld && _agent != null)
+            {
+                _slapCryHeld = false;
+                MaidTears.FinishSlapCry(_agent);
             }
 
             _agent = null;
@@ -542,6 +529,11 @@ namespace MaidHome.Gameplay.Maid
 
             // 连击超时后把面板那份文字也清掉（彩虹大字是 HUD 自己画的）
             SyncPanelCombo();
+            if (_slapCryHeld && _agent != null && _comboHud.Count == 0)
+            {
+                _slapCryHeld = false;
+                MaidTears.FinishSlapCry(_agent);
+            }
 
             // 每根手指各管一份状态，所以可以两根手指同时拽左右耳 / 同时戳两只眼睛
             PointerInput.CopyPointers(_framePointers);
@@ -713,8 +705,6 @@ namespace MaidHome.Gameplay.Maid
             {
                 return;
             }
-
-            ApplyPartialHurt();
 
             // 弹簧是 20Hz 算的，补一个固定步长
             _simAccumulator += Time.unscaledDeltaTime;
@@ -1268,6 +1258,12 @@ namespace MaidHome.Gameplay.Maid
             _comboHud.Step = _comboMilestoneStep;
             _comboHud.Confirm();
             SyncPanelCombo();
+            MaidTears.Hurt(_agent, 1f);
+            if (_comboHud.Count >= 10)
+            {
+                _slapCryHeld = true;
+                MaidTears.HoldSlapCry(_agent);
+            }
 
             // 模组：每 100 连放一次「N连抽」+ 彩蛋音，连击期间不刷台词
             if (_comboHud.MilestoneHit)
@@ -1330,6 +1326,7 @@ namespace MaidHome.Gameplay.Maid
             MaidDamageFlash.Flash(_agent != null ? _agent.gameObject : null, _flashColor, _flashSeconds);
             ShowLine(MaidEasterEgg.PickHurt(_agent, lines));
             MaidAudioService.Play(_agent, MaidSoundId.Hurt, false, _voiceVolume);
+            MaidTears.Hurt(_agent, 0.5f);
             PlayHurtAnimation();
         }
 
@@ -1724,245 +1721,13 @@ namespace MaidHome.Gameplay.Maid
 
         // ---------- 受伤动画 ----------
 
-        /// <summary>
-        /// 借女仆自己的「被打」动画演一下（TLM 里这条叫 attacked），演完换回原来那条。
-        /// 再次受伤时动画不回到第一帧，但 5 秒计时要从这一次重新开始。
-        /// </summary>
+        /// <summary>受伤动画挂在女仆身上，连续挨打会累加，退出摸脸后也继续演。</summary>
         void PlayHurtAnimation()
         {
-            if (_agent == null || string.IsNullOrEmpty(_hurtClipName))
+            if (_agent != null)
             {
-                return;
+                MaidHurtAnimation.Hurt(_agent, true, _rig != null ? _rig.Head : null);
             }
-
-            BedrockAnimationPlayer player = _agent.GetComponent<BedrockAnimationPlayer>();
-            string clip = PickHurtClip(player);
-            if (player == null || !player.HasClip(clip))
-            {
-                return;
-            }
-
-            if (_hurtPlaying)
-            {
-                // 动画继续沿着当前时间播，只把 5 秒的结束时间重新拨到 now + _hurtSeconds。
-                // 这里不能 player.Play，否则连打时每一下都卡回第一帧。
-                if (_hurtRoutine != null)
-                {
-                    StopCoroutine(_hurtRoutine);
-                }
-
-                _hurtRoutine = StartCoroutine(RestoreHurt(player));
-                return;
-            }
-
-            _activeHurtClip = clip;
-            _hurtPartial = false;
-            _hurtTracks.Clear();
-            _hurtBones.Clear();
-            _hurtRestPositions.Clear();
-            _hurtRestRotations.Clear();
-            _hurtRestScales.Clear();
-
-            bool headRecognized = _rig != null && _rig.Head != null;
-            if (headRecognized)
-            {
-                List<BedrockBoneTrack> tracks = new List<BedrockBoneTrack>();
-                List<Transform> bones = new List<Transform>();
-                if (player.TryGetTracksUnder(clip, _rig.Head, tracks, bones))
-                {
-                    for (int i = 0; i < tracks.Count; i++)
-                    {
-                        if (bones[i] == null)
-                        {
-                            continue;
-                        }
-
-                        _hurtTracks.Add(tracks[i]);
-                        _hurtBones.Add(bones[i]);
-                        _hurtRestPositions.Add(bones[i].localPosition);
-                        _hurtRestRotations.Add(bones[i].localRotation);
-                        _hurtRestScales.Add(bones[i].localScale);
-                    }
-
-                    _hurtLength = Mathf.Max(0f, player.ClipLength(clip));
-                    _hurtTime = 0f;
-                    _hurtPartial = _hurtTracks.Count > 0;
-                }
-
-                if (!_hurtPartial)
-                {
-                    // 识别到头就绝不整身控制；这条 clip 没有头部轨道就不演。
-                    _activeHurtClip = null;
-                    return;
-                }
-            }
-            else
-            {
-                // 没有头部才允许整身动画。
-                _hurtReturnClip = player.PlayingClipName;
-                _hurtReturnTime = player.PlayingTime;
-                if (!player.Play(clip))
-                {
-                    _hurtReturnClip = null;
-                    _activeHurtClip = null;
-                    return;
-                }
-            }
-
-            _hurtPlaying = true;
-            _hurtRoutine = StartCoroutine(RestoreHurt(player));
-        }
-
-        string PickHurtClip(BedrockAnimationPlayer player)
-        {
-            if (player != null && player.HasClip("game_lost2"))
-            {
-                return "game_lost2";
-            }
-
-            return _hurtClipName;
-        }
-
-        IEnumerator RestoreHurt(BedrockAnimationPlayer player)
-        {
-            yield return HoldHurt(player, Mathf.Max(0.2f, _hurtSeconds));
-            _hurtRoutine = null;
-            _hurtPlaying = false;
-            if (_hurtPartial)
-            {
-                RestorePartialHurt();
-                _hurtPartial = false;
-            }
-            else
-            {
-                ReturnToHurtClip(player);
-            }
-
-            _activeHurtClip = null;
-        }
-
-        /// <summary>
-        /// 这 _hurtSeconds 秒里受伤动画必须一直在播：被别的东西（吃东西协程 / 游走状态机 / 别的玩法）
-        /// 顶掉就立刻顶回来，并且警告一次，方便查到底是谁在动。
-        /// </summary>
-        IEnumerator HoldHurt(BedrockAnimationPlayer player, float seconds)
-        {
-            float end = Time.unscaledTime + seconds;
-            bool warned = false;
-            while (Time.unscaledTime < end)
-            {
-                if (!_hurtPartial && player != null && !string.IsNullOrEmpty(_activeHurtClip)
-                    && !player.IsPlayingClip(_activeHurtClip))
-                {
-                    if (!warned)
-                    {
-                        warned = true;
-                        Debug.LogWarning("受伤动画 " + _activeHurtClip + " 被 " + player.PlayingClipName
-                            + " 顶掉了，已顶回来", this);
-                    }
-
-                    player.Play(_activeHurtClip);
-                }
-
-                yield return null;
-            }
-        }
-
-        void StopHurtAnimation()
-        {
-            if (_hurtRoutine != null)
-            {
-                StopCoroutine(_hurtRoutine);
-                _hurtRoutine = null;
-            }
-
-            if (_hurtPlaying)
-            {
-                _hurtPlaying = false;
-                if (_hurtPartial)
-                {
-                    RestorePartialHurt();
-                }
-                else
-                {
-                    ReturnToHurtClip(_agent != null ? _agent.GetComponent<BedrockAnimationPlayer>() : null);
-                }
-            }
-
-            _hurtPartial = false;
-            _activeHurtClip = null;
-            _hurtTracks.Clear();
-            _hurtBones.Clear();
-            _hurtRestPositions.Clear();
-            _hurtRestRotations.Clear();
-            _hurtRestScales.Clear();
-            _hurtReturnClip = null;
-            _hurtReturnTime = 0f;
-        }
-
-        void ApplyPartialHurt()
-        {
-            if (!_hurtPartial || _hurtTracks.Count == 0)
-            {
-                return;
-            }
-
-            _hurtTime += Time.deltaTime;
-            float time = _hurtLength > 0.001f ? Mathf.Repeat(_hurtTime, _hurtLength) : _hurtTime;
-            for (int i = 0; i < _hurtTracks.Count; i++)
-            {
-                Transform bone = _hurtBones[i];
-                if (bone == null)
-                {
-                    continue;
-                }
-
-                Vector3 position;
-                Quaternion rotation;
-                Vector3 scale;
-                BedrockAnimationPlayer.Sample(_hurtTracks[i], time, out position, out rotation, out scale);
-                bone.localPosition = position;
-                bone.localRotation = rotation;
-                bone.localScale = scale;
-            }
-        }
-
-        void RestorePartialHurt()
-        {
-            for (int i = 0; i < _hurtBones.Count; i++)
-            {
-                Transform bone = _hurtBones[i];
-                if (bone != null)
-                {
-                    bone.localPosition = _hurtRestPositions[i];
-                    bone.localRotation = _hurtRestRotations[i];
-                    bone.localScale = _hurtRestScales[i];
-                }
-            }
-
-            _hurtTime = 0f;
-        }
-
-        void ReturnToHurtClip(BedrockAnimationPlayer player)
-        {
-            // 退出摸脸模式时也得换回来，不然她会一直停在被打的姿势
-            if (player != null && !string.IsNullOrEmpty(_hurtReturnClip) && player.HasClip(_hurtReturnClip))
-            {
-                player.Play(_hurtReturnClip, _hurtReturnTime);
-            }
-            else
-            {
-                MaidWanderer wanderer = _agent != null ? _agent.Wanderer : null;
-                if (wanderer != null)
-                {
-                    // 不知道原来在播什么，就让她立刻重播 idle / walk
-                    // （只 invalidate 的话，暂停中状态机不会自己重播，她会停在借来的姿势上）
-                    wanderer.ReplayAnimation();
-                }
-            }
-
-            _hurtReturnClip = null;
-            _hurtReturnTime = 0f;
         }
 
         // ---------- F8 触发范围 ----------

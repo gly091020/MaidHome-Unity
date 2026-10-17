@@ -140,6 +140,19 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
+        /// <summary>把程序化动画的头部基准姿势重新写回去（受伤层结束后用，避免停在被打的歪头）</summary>
+        public void RestoreHeadPose()
+        {
+            if (_head == null)
+            {
+                return;
+            }
+
+            ApplyDelta(_head, _headRest, _sleeping
+                ? new Vector3(_sleepHeadDegrees * Mathf.Deg2Rad, 0f, 0f)
+                : Vector3.zero);
+        }
+
         /// <summary>抬手吃东西的动作演 seconds 秒（只有一个抬起再放下的弧线）</summary>
         public void PlayEat(float seconds)
         {

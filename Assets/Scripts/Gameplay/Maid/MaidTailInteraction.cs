@@ -467,6 +467,7 @@ namespace MaidHome.Gameplay.Maid
             // 拉太狠了，放一声女仆自己的受伤语音（来自她的声音包 maid.ai.hurt）
             MaidAudioService.Play(_agent, MaidSoundId.Hurt, false, _soundVolume);
             MaidChatBubble.Show(_agent, MaidEasterEgg.PickHurt(_agent, OverstretchLines), _lineSeconds);
+            MaidTears.Hurt(_agent, 0.5f);
         }
 
         void OnSniff()

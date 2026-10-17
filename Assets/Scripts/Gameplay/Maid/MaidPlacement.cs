@@ -80,6 +80,16 @@ namespace MaidHome.Gameplay.Maid
                 root.AddComponent<MaidHurtBlink>();
             }
 
+            if (root.GetComponent<MaidTears>() == null)
+            {
+                root.AddComponent<MaidTears>();
+            }
+
+            if (root.GetComponent<MaidHurtAnimation>() == null)
+            {
+                root.AddComponent<MaidHurtAnimation>();
+            }
+
             MaidAgent agent = root.GetComponent<MaidAgent>();
             if (agent == null)
             {

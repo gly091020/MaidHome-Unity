@@ -1159,6 +1159,7 @@ namespace MaidHome.Gameplay.Maid
             MaidDamageFlash.Flash(_agent != null ? _agent.gameObject : null, _flashColor, _flashSeconds);
             MaidAudioService.Play(_agent, MaidSoundId.Hurt, false, _voiceVolume);
             MaidChatBubble.Show(_agent, line, _lineSeconds);
+            MaidTears.Hurt(_agent, 0.5f);
             if (_panel != null)
             {
                 _panel.ShowLine(line, _lineSeconds);

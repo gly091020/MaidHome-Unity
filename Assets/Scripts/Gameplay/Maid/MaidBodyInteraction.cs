@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using MaidHome.Core.Input;
 using MaidHome.Gameplay.Audio;
-using MaidHome.Interop.Bedrock;
 using UnityEngine;
 
 namespace MaidHome.Gameplay.Maid
@@ -44,7 +43,7 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _impactFlashSpeed = 4f;
         [Tooltip("两次闪红之间至少隔多久")]
         [SerializeField] private float _impactFlashCooldown = 0.6f;
-        [Tooltip("连续碰撞里，间隔超过这个时间才重新触发 5 秒脸部受伤表情")]
+        [Tooltip("连续碰撞里，间隔超过这个时间才再累加一次受伤动画")]
         [SerializeField] private float _hurtRestartCooldown = 0.15f;
         [Tooltip("刚进布娃娃后忽略碰撞的时间，避免她倒下去砸到地板也闪红")]
         [SerializeField] private float _impactWarmupSeconds = 0.4f;
@@ -52,11 +51,6 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _impactFlashSeconds = 0.5f;
         [Tooltip("碰撞受伤语音的音量倍率")]
         [SerializeField] private float _impactVoiceVolume = 6f;
-        [Tooltip("碰撞时借用的受伤动画；有 game_lost2 时优先用 game_lost2，并且只抽 head 子树")]
-        [SerializeField] private string _hurtClipName = "game_lost";
-        [Tooltip("头部受伤表情持续时间；再次受伤会重新计时")]
-        [SerializeField] private float _faceHurtSeconds = 5f;
-
         public bool IsActive { get; private set; }
 
         sealed class Grab
@@ -83,16 +77,6 @@ namespace MaidHome.Gameplay.Maid
         float _nextImpactFlashAt = -100f;
         float _lastHurtAt = -100f;
         Transform _headBone;
-        Rigidbody _headBody;
-        readonly List<BedrockBoneTrack> _faceTracks = new List<BedrockBoneTrack>();
-        readonly List<Transform> _faceBones = new List<Transform>();
-        readonly List<Vector3> _faceRestPositions = new List<Vector3>();
-        readonly List<Quaternion> _faceRestRotations = new List<Quaternion>();
-        readonly List<Vector3> _faceRestScales = new List<Vector3>();
-        float _faceHurtLength;
-        float _faceHurtTime;
-        float _faceHurtRemaining;
-        string _faceHurtClip;
 
         /// <summary>这个女仆能不能玩全身。模型里至少要能认出物理块</summary>
         public bool Supports(MaidAgent agent)
@@ -148,7 +132,15 @@ namespace MaidHome.Gameplay.Maid
             _impactIgnoreUntil = Time.unscaledTime + Mathf.Max(0f, _impactWarmupSeconds);
             _nextImpactFlashAt = -100f;
             _lastHurtAt = -100f;
-            SetupFaceHurt(plan);
+            _headBone = null;
+            for (int i = 0; i < plan.Parts.Count; i++)
+            {
+                if (string.Equals(plan.Parts[i].Label, "head", StringComparison.Ordinal))
+                {
+                    _headBone = plan.Parts[i].Bone;
+                    break;
+                }
+            }
 
             EnsurePanel();
             CachePickColliders();
@@ -225,8 +217,7 @@ namespace MaidHome.Gameplay.Maid
 
             _ragdoll = null;
             _agent = null;
-            RestoreFaceHurt();
-            ClearFaceHurt();
+            _headBone = null;
             IsActive = false;
         }
 
@@ -242,12 +233,10 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
-            if (_faceTracks.Count > 0
-                && Time.unscaledTime - _lastHurtAt >= Mathf.Max(0f, _hurtRestartCooldown))
+            if (Time.unscaledTime - _lastHurtAt >= Mathf.Max(0f, _hurtRestartCooldown))
             {
                 _lastHurtAt = Time.unscaledTime;
-                _faceHurtTime = 0f;
-                _faceHurtRemaining = Mathf.Max(0.05f, _faceHurtSeconds);
+                MaidHurtAnimation.Hurt(_agent, false, _headBone);
             }
 
             if (Time.unscaledTime - _nextImpactFlashAt < _impactFlashCooldown)
@@ -258,155 +247,7 @@ namespace MaidHome.Gameplay.Maid
             _nextImpactFlashAt = Time.unscaledTime;
             MaidDamageFlash.Flash(_agent.gameObject, _impactFlashColor, _impactFlashSeconds);
             MaidAudioService.Play(_agent, MaidSoundId.Hurt, false, _impactVoiceVolume);
-        }
-
-        void SetupFaceHurt(MaidRagdollPlan plan)
-        {
-            ClearFaceHurt();
-            if (plan == null || _agent == null || string.IsNullOrEmpty(_hurtClipName))
-            {
-                return;
-            }
-
-            for (int i = 0; i < plan.Parts.Count; i++)
-            {
-                if (string.Equals(plan.Parts[i].Label, "head", StringComparison.Ordinal))
-                {
-                    _headBone = plan.Parts[i].Bone;
-                    break;
-                }
-            }
-
-            BedrockAnimationPlayer player = _agent.GetComponent<BedrockAnimationPlayer>();
-            if (_headBone == null || player == null)
-            {
-                ClearFaceHurt();
-                return;
-            }
-
-            _headBody = _headBone.GetComponent<Rigidbody>();
-            string clip = null;
-            List<BedrockBoneTrack> tracks = new List<BedrockBoneTrack>();
-            List<Transform> bones = new List<Transform>();
-            if (player.HasClip("game_lost2")
-                && player.TryGetTracksUnder("game_lost2", _headBone, tracks, bones))
-            {
-                clip = "game_lost2";
-            }
-            else if (player.HasClip(_hurtClipName)
-                && player.TryGetTracksUnder(_hurtClipName, _headBone, tracks, bones))
-            {
-                clip = _hurtClipName;
-            }
-
-            if (clip == null)
-            {
-                ClearFaceHurt();
-                return;
-            }
-
-            _faceHurtClip = clip;
-            for (int i = 0; i < tracks.Count; i++)
-            {
-                Transform bone = bones[i];
-                if (bone == null || (bone != _headBone && bone.GetComponent<Rigidbody>() != null))
-                {
-                    continue;
-                }
-
-                _faceTracks.Add(tracks[i]);
-                _faceBones.Add(bone);
-                _faceRestPositions.Add(bone.localPosition);
-                _faceRestRotations.Add(bone.localRotation);
-                _faceRestScales.Add(bone.localScale);
-            }
-
-            _faceHurtLength = Mathf.Max(0f, player.ClipLength(clip));
-            if (_faceTracks.Count == 0)
-            {
-                ClearFaceHurt();
-            }
-        }
-
-        void LateUpdate()
-        {
-            if (!IsActive || _faceTracks.Count == 0 || _faceHurtRemaining <= 0f)
-            {
-                return;
-            }
-
-            _faceHurtTime += Time.deltaTime;
-            _faceHurtRemaining -= Time.deltaTime;
-            float time = _faceHurtLength > 0.001f
-                ? Mathf.Repeat(_faceHurtTime, _faceHurtLength)
-                : _faceHurtTime;
-            for (int i = 0; i < _faceTracks.Count; i++)
-            {
-                Transform bone = _faceBones[i];
-                if (bone == null)
-                {
-                    continue;
-                }
-
-                Vector3 position;
-                Quaternion rotation;
-                Vector3 scale;
-                BedrockAnimationPlayer.Sample(_faceTracks[i], time, out position, out rotation, out scale);
-                if (bone == _headBone && _headBody != null)
-                {
-                    // 头根有刚体，只改旋转，别用局部位置和缩放和物理打架
-                    Transform parent = bone.parent;
-                    _headBody.MoveRotation(parent != null ? parent.rotation * rotation : rotation);
-                }
-                else
-                {
-                    bone.localPosition = position;
-                    bone.localRotation = rotation;
-                    bone.localScale = scale;
-                }
-            }
-
-            if (_faceHurtRemaining <= 0f)
-            {
-                RestoreFaceHurt();
-            }
-        }
-
-        void RestoreFaceHurt()
-        {
-            for (int i = 0; i < _faceBones.Count; i++)
-            {
-                Transform bone = _faceBones[i];
-                if (bone != null)
-                {
-                    if (bone == _headBone && _headBody != null)
-                    {
-                        continue;
-                    }
-
-                    bone.localPosition = _faceRestPositions[i];
-                    bone.localRotation = _faceRestRotations[i];
-                    bone.localScale = _faceRestScales[i];
-                }
-            }
-
-            _faceHurtTime = 0f;
-            _faceHurtRemaining = 0f;
-        }
-
-        void ClearFaceHurt()
-        {
-            _headBone = null;
-            _headBody = null;
-            _faceHurtClip = null;
-            _faceTracks.Clear();
-            _faceBones.Clear();
-            _faceRestPositions.Clear();
-            _faceRestRotations.Clear();
-            _faceRestScales.Clear();
-            _faceHurtLength = 0f;
-            _faceHurtTime = 0f;
-            _faceHurtRemaining = 0f;
+            MaidTears.Hurt(_agent, 1f);
         }
 
         void Update()
