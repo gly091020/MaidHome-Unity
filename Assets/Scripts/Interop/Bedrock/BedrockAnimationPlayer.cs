@@ -344,6 +344,56 @@ namespace MaidHome.Interop.Bedrock
             return !string.IsNullOrEmpty(name) && _entryByName.ContainsKey(name);
         }
 
+        /// <summary>
+        /// 取一条 clip 里某根骨骼整棵子树的轨道（含根本身）。
+        /// 布娃娃受伤表情只拿 head 子树，再在调用方按脸骨名过滤。
+        /// </summary>
+        public bool TryGetTracksUnder(string clipName, Transform root, List<BedrockBoneTrack> tracks,
+            List<Transform> bones)
+        {
+            if (tracks == null || bones == null)
+            {
+                return false;
+            }
+
+            tracks.Clear();
+            bones.Clear();
+
+            ClipEntry entry;
+            if (string.IsNullOrEmpty(clipName) || !_entryByName.TryGetValue(clipName, out entry)
+                || entry.Data == null)
+            {
+                return false;
+            }
+
+            string rootPath = BonePath(root);
+            if (string.IsNullOrEmpty(rootPath))
+            {
+                return false;
+            }
+
+            entry.Data.EnsureTracks();
+            string prefix = rootPath + "/";
+            for (int i = 0; i < entry.Data.Tracks.Count; i++)
+            {
+                BedrockBoneTrack track = entry.Data.Tracks[i];
+                if (!string.Equals(track.Path, rootPath, System.StringComparison.Ordinal)
+                    && !track.Path.StartsWith(prefix, System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Transform bone = transform.Find(track.Path);
+                if (bone != null)
+                {
+                    tracks.Add(track);
+                    bones.Add(bone);
+                }
+            }
+
+            return tracks.Count > 0;
+        }
+
         /// <summary>这条 clip 是不是正在播（被别的动画顶掉时看得出来）</summary>
         public bool IsPlayingClip(string name)
         {
@@ -527,7 +577,7 @@ namespace MaidHome.Interop.Bedrock
         }
 
         /// 烘焙好的 track 就是一串等间隔采样，二分找到区间再线性插值
-        static void Sample(BedrockBoneTrack track, float time, out Vector3 position, out Quaternion rotation,
+        public static void Sample(BedrockBoneTrack track, float time, out Vector3 position, out Quaternion rotation,
             out Vector3 scale)
         {
             int count = track.Count;

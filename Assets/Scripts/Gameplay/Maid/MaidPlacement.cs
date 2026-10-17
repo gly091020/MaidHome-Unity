@@ -89,6 +89,21 @@ namespace MaidHome.Gameplay.Maid
             agent.Id = assets.Maid != null ? assets.Maid.Id : "";
             agent.Save = assets.Maid;
 
+            // 她身上挂着的东西（现在只有示众牌）随存档一起回来
+            if (agent.Save != null)
+            {
+                MaidAttachmentStore attachments = MaidAttachmentStore.Load(agent.Save);
+                if (attachments.Sign.Enabled)
+                {
+                    MaidSignBoard.Attach(agent, attachments.Sign, false);
+                }
+
+                if (attachments.Mask.Enabled)
+                {
+                    MaidMaskView.Attach(agent, attachments.Mask, false);
+                }
+            }
+
             if (root.GetComponent<MaidIdleBubble>() == null)
             {
                 root.AddComponent<MaidIdleBubble>();

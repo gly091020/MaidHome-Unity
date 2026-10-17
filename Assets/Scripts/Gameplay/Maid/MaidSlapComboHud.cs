@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 namespace MaidHome.Gameplay.Maid
@@ -29,6 +31,7 @@ namespace MaidHome.Gameplay.Maid
         int _milestone;
         int _lastAward;
         float _milestoneAt = -1000f;
+        readonly List<float> _hitTimes = new List<float>();
 
         Font _font;
         GUIStyle _style;
@@ -58,6 +61,18 @@ namespace MaidHome.Gameplay.Maid
         /// <summary>彩带/粒子的尺寸倍率（1 = 模组原始尺寸）</summary>
         public float ParticleScale { get; set; }
 
+        /// <summary>
+        /// 连击数整体再放大多少倍（在 ComboSizeRatio 之上乘）。默认 1.45 = 比原来大一圈；
+        /// 由 MaidFaceInteraction / MaidFeedInteraction 传进来
+        /// </summary>
+        public float ComboScale { get; set; }
+
+        /// <summary>连击数下面那行小字的单位（扇脸 = 下/秒，丢蛋糕 = 个/秒）</summary>
+        public string RateUnit { get; set; }
+
+        /// <summary>算「速度」的窗口（秒）：最近这段时间里打了几下 / 窗口长度</summary>
+        public float RateWindow { get; set; }
+
         /// <summary>这一次 Confirm 是不是刚好踩到彩蛋</summary>
         public bool MilestoneHit { get; private set; }
 
@@ -84,6 +99,9 @@ namespace MaidHome.Gameplay.Maid
             MilestoneSizeRatio = 0.11f;
             MilestoneTopRatio = 0.12f;
             ParticleScale = 2f;
+            ComboScale = 1.45f;
+            RateUnit = "次/秒";
+            RateWindow = 1f;
         }
 
         public void Clear()
@@ -93,6 +111,7 @@ namespace MaidHome.Gameplay.Maid
             _milestone = 0;
             _lastAward = 0;
             _milestoneAt = -1000f;
+            _hitTimes.Clear();
             MilestoneHit = false;
         }
 
@@ -107,6 +126,8 @@ namespace MaidHome.Gameplay.Maid
 
             _count++;
             _lastSlapAt = now;
+            _hitTimes.Add(now);
+            PruneHits(now);
             MilestoneHit = false;
 
             // 模组 SlapMilestoneState：连击重新开始就清掉，只在 100 的倍数上放一次
@@ -131,7 +152,13 @@ namespace MaidHome.Gameplay.Maid
         public void Draw()
         {
             float now = Time.unscaledTime;
-            DrawMilestone(now);
+            float top;
+            float size;
+            float speedSize;
+            ComboLayout(now, out top, out size, out speedSize);
+
+            // 「N连抽」别压在连击数（和下面的速度）上：至少放到连击那一块底下
+            DrawMilestone(now, top + size * 1.05f + speedSize * 1.9f);
 
             int count = Count;
             if (count <= 0)
@@ -142,15 +169,53 @@ namespace MaidHome.Gameplay.Maid
             float age = now - _lastSlapAt;
             float fade = Mathf.Min(1f, (Mathf.Max(0.1f, Timeout) - age) / FadeSeconds);
             int alpha = Mathf.Max(4, (int)(255f * fade));
+            DrawRainbowLabel("连击 ×" + count, Screen.width * 0.5f, top, Mathf.RoundToInt(size), alpha, now);
+
+            // 连击数下面一行小字：最近一拍的速度（下/秒 / 个/秒）
+            DrawRateLabel(top + size * 1.05f, Mathf.RoundToInt(speedSize), alpha, now);
+        }
+
+        /// <summary>连击数 / 速度小字的位置和大小（脉冲动画算在一起，两行一起弹）</summary>
+        void ComboLayout(float now, out float top, out float size, out float speedSize)
+        {
+            float age = now - _lastSlapAt;
             float pulse = age < PulseSeconds
                 ? 0.35f * Mathf.Exp(-age / 0.085f) * Mathf.Cos(age / 0.07f)
                 : 0f;
-            float size = Screen.width * ComboSizeRatio * Mathf.Max(0.2f, 1f + pulse);
-            float top = Mathf.Max(16f, Screen.height * ComboTopRatio) - pulse * 14f;
-            DrawRainbowLabel("连击 ×" + count, Screen.width * 0.5f, top, Mathf.RoundToInt(size), alpha, now);
+            float scale = Mathf.Clamp(ComboScale <= 0f ? 1f : ComboScale, 0.2f, 5f);
+            size = Screen.width * ComboSizeRatio * scale * Mathf.Max(0.2f, 1f + pulse);
+            top = Mathf.Max(16f, Screen.height * ComboTopRatio) - pulse * 14f;
+            // 速度那行要看得清：连击数的 0.35 倍，手机上也不会太小
+            speedSize = Mathf.Max(18f, size * 0.35f);
         }
 
-        void DrawMilestone(float now)
+        void DrawRateLabel(float top, int fontSize, int alpha, float now)
+        {
+            // 和连击数用同一套彩虹（逐字变色、随时间滚动），作者要彩色
+            string text = CurrentRate(now).ToString("0.0", CultureInfo.InvariantCulture) + " " + RateUnit;
+            DrawRainbowLabel(text, Screen.width * 0.5f, top, fontSize, alpha, now);
+        }
+
+        void PruneHits(float now)
+        {
+            float window = Mathf.Max(0.2f, RateWindow);
+            for (int i = _hitTimes.Count - 1; i >= 0; i--)
+            {
+                if (now - _hitTimes[i] > window)
+                {
+                    _hitTimes.RemoveAt(i);
+                }
+            }
+        }
+
+        /// <summary>最近 RateWindow 秒里的击打次数 / 窗口长度</summary>
+        float CurrentRate(float now)
+        {
+            PruneHits(now);
+            return _hitTimes.Count / Mathf.Max(0.2f, RateWindow);
+        }
+
+        void DrawMilestone(float now, float minTop)
         {
             if (_milestone <= 0)
             {
@@ -185,7 +250,7 @@ namespace MaidHome.Gameplay.Maid
             float fade = Mathf.Min(1f, (TextSeconds - age) / 0.55f);
             int alpha = Mathf.Max(4, (int)(fade * 255f));
             float height = Screen.width * MilestoneSizeRatio * pop;
-            float top = Mathf.Max(42f, Screen.height * MilestoneTopRatio);
+            float top = Mathf.Max(Mathf.Max(42f, Screen.height * MilestoneTopRatio), minTop);
             DrawMilestoneText(_milestone + "连抽", Screen.width * 0.5f, top, height, alpha, now);
         }
 

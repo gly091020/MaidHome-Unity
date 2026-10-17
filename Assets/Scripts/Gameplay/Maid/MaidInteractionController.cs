@@ -19,7 +19,16 @@ namespace MaidHome.Gameplay.Maid
             get { return _current != null; }
         }
 
+        /// <summary>当前点开的那只（挂牌的「游街示众」要避开正在被交互的这一只）</summary>
+        public MaidAgent Current
+        {
+            get { return _current; }
+        }
+
         [SerializeField] private MaidInteractionPanel _panel;
+        [Tooltip("第二层「挂件」选择面板。留空就找同一物体上的 / 场景里唯一的那份 MaidAttachmentMenuPanel，"
+            + "都没有才自动生成一块")]
+        [SerializeField] private MaidAttachmentMenuPanel _menu;
         [SerializeField] private HouseCameraFitter _cameraFitter;
         [FormerlySerializedAs("_")]
         [Tooltip("打开女仆互动界面时要藏起来的物体组合")]
@@ -46,6 +55,10 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _groomZoom = 1f;
         [Tooltip("梳毛模式的透视 fov。0 = 不切透视，全程用正交（最稳，画面不会跳）；-1 = 自动：按正交取景的画面高度反推 fov，有立体感但画面大小不变；填正数 = 固定 fov（模组那边是坐垫上的第一人称，所以给了这个口子）")]
         [SerializeField] private float _groomPerspectiveFov;
+        [Tooltip("挂牌模式把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
+        [SerializeField] private float _signOrthographicSize = -1f;
+        [Tooltip("面具模式把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
+        [SerializeField] private float _maskOrthographicSize = -1f;
         [SerializeField] private float _clickDistance = 300f;
         [SerializeField] private LayerMask _clickMask = ~0;
 
@@ -54,6 +67,9 @@ namespace MaidHome.Gameplay.Maid
         MaidFaceInteraction _face;
         MaidFeedInteraction _feed;
         MaidGroomingInteraction _groom;
+        MaidBodyInteraction _body;
+        MaidSignInteraction _sign;
+        MaidMaskInteraction _mask;
         float _appliedFeedFov = -1f;
         float _appliedGroomFov = -1f;
         Vector3 _groomFocusCenter;
@@ -106,6 +122,40 @@ namespace MaidHome.Gameplay.Maid
                 _groom = gameObject.AddComponent<MaidGroomingInteraction>();
             }
 
+            _body = GetComponent<MaidBodyInteraction>();
+            if (_body == null)
+            {
+                _body = gameObject.AddComponent<MaidBodyInteraction>();
+            }
+
+            _sign = GetComponent<MaidSignInteraction>();
+            if (_sign == null)
+            {
+                _sign = gameObject.AddComponent<MaidSignInteraction>();
+            }
+
+            _mask = GetComponent<MaidMaskInteraction>();
+            if (_mask == null)
+            {
+                _mask = gameObject.AddComponent<MaidMaskInteraction>();
+            }
+
+            if (_menu == null)
+            {
+                _menu = GetComponent<MaidAttachmentMenuPanel>();
+            }
+
+            if (_menu == null)
+            {
+                // 场景里恰好摆了一份（挂在别的物体上）就用它；有多份就不猜，自己生成一块
+                _menu = FindSingleSceneMenu();
+            }
+
+            if (_menu == null)
+            {
+                _menu = gameObject.AddComponent<MaidAttachmentMenuPanel>();
+            }
+
             if (_hideOnOpen == null)
             {
                 // 兜底：改脚本时 Unity 可能正开着，新字段在场景里还是 None，按名字再找一次
@@ -139,6 +189,29 @@ namespace MaidHome.Gameplay.Maid
             return found;
         }
 
+        /// <summary>场景里唯一的第二层挂件面板（挂在别的物体上也认）；有多份就不猜</summary>
+        static MaidAttachmentMenuPanel FindSingleSceneMenu()
+        {
+            MaidAttachmentMenuPanel[] all = FindObjectsOfType<MaidAttachmentMenuPanel>(true);
+            MaidAttachmentMenuPanel found = null;
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i] == null)
+                {
+                    continue;
+                }
+
+                if (found != null)
+                {
+                    return null;
+                }
+
+                found = all[i];
+            }
+
+            return found;
+        }
+
         void OnEnable()
         {
             if (_panel != null)
@@ -148,6 +221,8 @@ namespace MaidHome.Gameplay.Maid
                 _panel.FaceRequested += OpenFace;
                 _panel.FeedRequested += OpenFeed;
                 _panel.GroomRequested += OpenGroom;
+                _panel.BodyRequested += OpenBody;
+                _panel.AttachRequested += OpenAttachments;
             }
 
             if (_tail != null)
@@ -169,6 +244,28 @@ namespace MaidHome.Gameplay.Maid
             {
                 _groom.Ended += OnGroomEnded;
             }
+
+            if (_body != null)
+            {
+                _body.Ended += OnBodyEnded;
+            }
+
+            if (_sign != null)
+            {
+                _sign.Ended += OnSignEnded;
+            }
+
+            if (_mask != null)
+            {
+                _mask.Ended += OnMaskEnded;
+            }
+
+            if (_menu != null)
+            {
+                _menu.SignRequested += OpenSign;
+                _menu.MaskRequested += OpenMask;
+                _menu.BackRequested += CloseAttachments;
+            }
         }
 
         void OnDisable()
@@ -180,6 +277,8 @@ namespace MaidHome.Gameplay.Maid
                 _panel.FaceRequested -= OpenFace;
                 _panel.FeedRequested -= OpenFeed;
                 _panel.GroomRequested -= OpenGroom;
+                _panel.BodyRequested -= OpenBody;
+                _panel.AttachRequested -= OpenAttachments;
             }
 
             if (_tail != null)
@@ -200,6 +299,33 @@ namespace MaidHome.Gameplay.Maid
             if (_groom != null)
             {
                 _groom.Ended -= OnGroomEnded;
+            }
+
+            if (_body != null)
+            {
+                _body.Ended -= OnBodyEnded;
+            }
+
+            if (_sign != null)
+            {
+                _sign.Ended -= OnSignEnded;
+            }
+
+            if (_mask != null)
+            {
+                _mask.Ended -= OnMaskEnded;
+            }
+
+            if (_menu != null)
+            {
+                _menu.SignRequested -= OpenSign;
+                _menu.MaskRequested -= OpenMask;
+                _menu.BackRequested -= CloseAttachments;
+            }
+
+            if (_body != null && _body.IsActive)
+            {
+                _body.Abort();
             }
 
             // 界面状态跟着控制器走，别让背包按钮留在隐藏状态
@@ -245,6 +371,47 @@ namespace MaidHome.Gameplay.Maid
                     // 取景会把相机按回正交，所以顺手把透视标记清掉，下面 LateUpdate 再按回来
                     _appliedGroomFov = -1f;
                     FocusGroom();
+                }
+
+                return;
+            }
+
+            // 玩全身模式自己处理拖动和返回键
+            if (_body != null && _body.IsActive)
+            {
+                return;
+            }
+
+            // 挂牌模式同理（面板在屏幕上打字，画面别跟着动）
+            if (_sign != null && _sign.IsActive)
+            {
+                // 她刚进面板时可能在转过来，等转稳了补一次取景（不然牌子会偏在画面一边）
+                if (_sign.ConsumeRefocusRequest())
+                {
+                    FocusSign();
+                }
+
+                return;
+            }
+
+            // 面具模式同理（选照片的时候系统对话框会盖住画面，别在背后乱跑）
+            if (_mask != null && _mask.IsActive)
+            {
+                if (_mask.ConsumeRefocusRequest())
+                {
+                    FocusMask();
+                }
+
+                return;
+            }
+
+            // 第二层「挂件」面板开着：点画面别乱切人/关界面，等玩家在面板里选
+            if (_menu != null && _menu.IsVisible)
+            {
+                // Android 返回键 / Esc = 退回女仆面板
+                if (PointerInput.BackPressed)
+                {
+                    CloseAttachments();
                 }
 
                 return;
@@ -345,6 +512,21 @@ namespace MaidHome.Gameplay.Maid
                 _groom.Abort();
             }
 
+            if (_body != null && _body.IsActive)
+            {
+                _body.Abort();
+            }
+
+            if (_sign != null && _sign.IsActive)
+            {
+                _sign.Abort();
+            }
+
+            if (_mask != null && _mask.IsActive)
+            {
+                _mask.Abort();
+            }
+
             // 关界面可能是从中/重挡直接退出来的，投影也得切回正交
             RestoreFeedProjection();
             RestoreGroomProjection();
@@ -363,6 +545,11 @@ namespace MaidHome.Gameplay.Maid
             if (_panel != null)
             {
                 _panel.Close();
+            }
+
+            if (_menu != null)
+            {
+                _menu.Hide();
             }
 
             SetInventoryVisible(true);
@@ -505,7 +692,7 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
-        /// <summary>开女仆面板：四个模式的可用性一起算（Supports 会去认骨架，所以只在这里调）</summary>
+        /// <summary>开女仆面板：各交互模式的可用性一起算（Supports 会去认骨架，所以只在这里调）</summary>
         void ReopenPanel()
         {
             if (_current == null || _panel == null)
@@ -515,7 +702,30 @@ namespace MaidHome.Gameplay.Maid
 
             _panel.Open(_current.Save, _tail != null && _tail.Supports(_current),
                 _face != null && _face.Supports(_current), _feed != null && _feed.Supports(_current),
-                _groom != null && _groom.Supports(_current));
+                _groom != null && _groom.Supports(_current), _body != null && _body.Supports(_current));
+        }
+
+        /// <summary>第一层点「挂件」→ 第二层：选挂牌 / 面具</summary>
+        void OpenAttachments()
+        {
+            if (_current == null || _menu == null)
+            {
+                return;
+            }
+
+            _panel.Close();
+            _menu.Show(_sign != null && _sign.Supports(_current), _mask != null && _mask.Supports(_current));
+        }
+
+        /// <summary>第二层点「返回」→ 回第一层女仆面板</summary>
+        void CloseAttachments()
+        {
+            if (_menu != null)
+            {
+                _menu.Hide();
+            }
+
+            ReopenPanel();
         }
 
         void OpenGroom()
@@ -581,6 +791,149 @@ namespace MaidHome.Gameplay.Maid
             RestoreGroomProjection();
 
             if (_current != null && _cameraFitter != null && _groomOrthographicSize > 0f)
+            {
+                _cameraFitter.FocusKeepingAngle(_current.GetBounds(), _current.transform);
+            }
+
+            if (_current != null && _panel != null)
+            {
+                ReopenPanel();
+            }
+        }
+
+        void OpenBody()
+        {
+            if (_body == null || _current == null || _body.IsActive)
+            {
+                return;
+            }
+
+            if (!_body.Begin(_current))
+            {
+                return;
+            }
+
+            _panel.Close();
+        }
+
+        void OnBodyEnded()
+        {
+            if (_current != null && _panel != null)
+            {
+                ReopenPanel();
+            }
+        }
+
+        void OpenSign()
+        {
+            if (_sign == null || _current == null || _sign.IsActive)
+            {
+                return;
+            }
+
+            if (!_sign.Begin(_current))
+            {
+                return;
+            }
+
+            _panel.Close();
+            if (_menu != null)
+            {
+                _menu.Hide();
+            }
+
+            FocusSign();
+        }
+
+        /// <summary>挂牌取景：框住牌子（连带头一起），她身上那块牌子远看是看不清的</summary>
+        void FocusSign()
+        {
+            if (_cameraFitter == null || _sign == null || _current == null)
+            {
+                return;
+            }
+
+            float size = _signOrthographicSize > 0f ? _signOrthographicSize : _sign.FocusOrthographicSize;
+            if (size <= 0f)
+            {
+                return;
+            }
+
+            Bounds focus;
+            if (!_sign.TryGetFocusBounds(out focus))
+            {
+                return;
+            }
+
+            _cameraFitter.FocusKeepingAngle(focus, _current.transform, size,
+                _sign.FocusPitchDegrees >= 0f ? _sign.FocusPitchDegrees : _cameraFitter.FocusPitchDegrees,
+                _cameraFitter.FocusLookHeightRatio);
+        }
+
+        void OnSignEnded()
+        {
+            // 挂牌时相机推近了，退出来要回到点开女仆时的取景
+            if (_current != null && _cameraFitter != null)
+            {
+                _cameraFitter.FocusKeepingAngle(_current.GetBounds(), _current.transform);
+            }
+
+            if (_current != null && _panel != null)
+            {
+                ReopenPanel();
+            }
+        }
+
+        void OpenMask()
+        {
+            if (_mask == null || _current == null || _mask.IsActive)
+            {
+                return;
+            }
+
+            if (!_mask.Begin(_current))
+            {
+                return;
+            }
+
+            _panel.Close();
+            if (_menu != null)
+            {
+                _menu.Hide();
+            }
+
+            FocusMask();
+        }
+
+        /// <summary>面具取景：框住面具（连脸一起），她在面板里已经面向镜头了</summary>
+        void FocusMask()
+        {
+            if (_cameraFitter == null || _mask == null || _current == null)
+            {
+                return;
+            }
+
+            float size = _maskOrthographicSize > 0f ? _maskOrthographicSize : _mask.FocusOrthographicSize;
+            if (size <= 0f)
+            {
+                return;
+            }
+
+            Bounds focus;
+            if (!_mask.TryGetFocusBounds(out focus))
+            {
+                return;
+            }
+
+            _cameraFitter.FocusKeepingAngle(focus, _current.transform, size,
+                _mask.FocusPitchDegrees >= 0f ? _mask.FocusPitchDegrees : _cameraFitter.FocusPitchDegrees,
+                _cameraFitter.FocusLookHeightRatio);
+        }
+
+        void OnMaskEnded()
+        {
+            // 面具时相机推近了，退出来要回到点开女仆时的取景
+            if (_current != null && _cameraFitter != null)
             {
                 _cameraFitter.FocusKeepingAngle(_current.GetBounds(), _current.transform);
             }

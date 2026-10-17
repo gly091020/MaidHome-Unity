@@ -97,7 +97,7 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _feedCooldownSeconds = 0.3f;
 
         [Header("中挡：扔蛋糕")]
-        [Tooltip("被蛋糕砸中时混进来的那条动画（TLM 的 game_lost = 战败姿势），演完再混回祈求/原来那条")]
+        [Tooltip("被蛋糕砸中时混进来的那条动画；有 game_lost2 时优先用 game_lost2")]
         [SerializeField] private string _hurtClipName = "game_lost";
         [Tooltip("受伤动画不管多长，演这么久就换回来（game_lost 本身有 100 秒，靠这个截断）")]
         [SerializeField] private float _hurtSeconds = 5f;
@@ -141,6 +141,8 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private AudioClip _milestoneClip;
         [Tooltip("「N连抽」彩蛋粒子的尺寸倍率（模组原始尺寸 = 1，搬到手机上要放大）")]
         [SerializeField] private float _comboParticleScale = 2f;
+        [Tooltip("连击数整体再放大多少（在 HUD 自己的字号比例之上乘，1.45 = 比原来的大一圈）")]
+        [SerializeField] private float _comboScale = 1.45f;
         [Tooltip("砸到脸上的闪红。Alpha 当强度用：1 = 纯红（原版受伤），0.5 = 半透明红，0 = 不闪")]
         [SerializeField] private Color _cakeFlashColor = new Color(1f, 0f, 0f, 0.5f);
         [Tooltip("砸到脸上的闪红时长。原版受伤是 0.5 秒")]
@@ -191,12 +193,21 @@ namespace MaidHome.Gameplay.Maid
         bool _eating;
         bool _eatPlaying;
         bool _hurtPlaying;
+        bool _hurtPartial;
         bool _begPlaying;
         int _selectedLevel = LevelLight;
         string _eatReturnClip;
         float _eatReturnTime;
         string _hurtReturnClip;
         float _hurtReturnTime;
+        string _activeHurtClip;
+        readonly List<BedrockBoneTrack> _hurtTracks = new List<BedrockBoneTrack>();
+        readonly List<Transform> _hurtBones = new List<Transform>();
+        readonly List<Vector3> _hurtRestPositions = new List<Vector3>();
+        readonly List<Quaternion> _hurtRestRotations = new List<Quaternion>();
+        readonly List<Vector3> _hurtRestScales = new List<Vector3>();
+        float _hurtLength;
+        float _hurtTime;
         float _lastFeedTime = -100f;
 
         public bool Supports(MaidAgent agent)
@@ -265,6 +276,8 @@ namespace MaidHome.Gameplay.Maid
             _comboHud.Timeout = _comboTimeoutSeconds;
             _comboHud.Step = _comboMilestoneStep;
             _comboHud.ParticleScale = _comboParticleScale;
+            _comboHud.ComboScale = _comboScale;
+            _comboHud.RateUnit = "个/秒";
             _comboHud.Clear();
             _headHasAnimated = false;
 
@@ -534,6 +547,8 @@ namespace MaidHome.Gameplay.Maid
 
         void LateUpdate()
         {
+            ApplyPartialHurt();
+
             if (!_twisting)
             {
                 return;
@@ -844,17 +859,76 @@ namespace MaidHome.Gameplay.Maid
         /// </summary>
         void PlayHurtAnimation()
         {
-            if (_hurtPlaying || _agent == null || string.IsNullOrEmpty(_hurtClipName))
+            if (_agent == null || string.IsNullOrEmpty(_hurtClipName))
             {
                 return;
             }
 
             BedrockAnimationPlayer player = GetPlayer();
-            if (player == null || !player.HasClip(_hurtClipName))
+            string clip = player != null && player.HasClip("game_lost2") ? "game_lost2" : _hurtClipName;
+            if (player == null || !player.HasClip(clip))
             {
                 return;
             }
 
+            if (_hurtPlaying)
+            {
+                if (_hurtRoutine != null)
+                {
+                    StopCoroutine(_hurtRoutine);
+                }
+
+                _hurtTime = 0f;
+                _hurtRoutine = StartCoroutine(RestoreHurt(player));
+                return;
+            }
+
+            _activeHurtClip = clip;
+            _hurtPartial = false;
+            _hurtTracks.Clear();
+            _hurtBones.Clear();
+            _hurtRestPositions.Clear();
+            _hurtRestRotations.Clear();
+            _hurtRestScales.Clear();
+
+            bool headRecognized = _rig != null && _rig.Head != null;
+            if (headRecognized)
+            {
+                List<BedrockBoneTrack> tracks = new List<BedrockBoneTrack>();
+                List<Transform> bones = new List<Transform>();
+                if (player.TryGetTracksUnder(clip, _rig.Head, tracks, bones))
+                {
+                    for (int i = 0; i < tracks.Count; i++)
+                    {
+                        if (bones[i] == null)
+                        {
+                            continue;
+                        }
+
+                        _hurtTracks.Add(tracks[i]);
+                        _hurtBones.Add(bones[i]);
+                        _hurtRestPositions.Add(bones[i].localPosition);
+                        _hurtRestRotations.Add(bones[i].localRotation);
+                        _hurtRestScales.Add(bones[i].localScale);
+                    }
+
+                    _hurtLength = Mathf.Max(0f, player.ClipLength(clip));
+                    _hurtTime = 0f;
+                    _hurtPartial = _hurtTracks.Count > 0;
+                }
+
+                if (!_hurtPartial)
+                {
+                    _activeHurtClip = null;
+                    return;
+                }
+
+                _hurtPlaying = true;
+                _hurtRoutine = StartCoroutine(RestoreHurt(player));
+                return;
+            }
+
+            // 没有识别头部才允许整身动画
             RecordReturnClip(out _hurtReturnClip, out _hurtReturnTime);
             // 先把祈求停掉：停了的 clip 不再参与混合，不然它会一直压在 game_lost 上面
             if (_begPlaying)
@@ -862,9 +936,10 @@ namespace MaidHome.Gameplay.Maid
                 player.StopClip(_begClip);
             }
 
-            if (!player.PlayBlended(_hurtClipName, _clipFadeSeconds))
+            if (!player.PlayBlended(clip, _clipFadeSeconds))
             {
                 _hurtReturnClip = null;
+                _activeHurtClip = null;
                 return;
             }
 
@@ -877,7 +952,17 @@ namespace MaidHome.Gameplay.Maid
             yield return HoldHurt(player, Mathf.Max(0.2f, _hurtSeconds));
             _hurtRoutine = null;
             _hurtPlaying = false;
-            ReturnToHurtClip(player);
+            if (_hurtPartial)
+            {
+                RestorePartialHurt();
+                _hurtPartial = false;
+            }
+            else
+            {
+                ReturnToHurtClip(player);
+            }
+
+            _activeHurtClip = null;
         }
 
         /// <summary>
@@ -890,16 +975,17 @@ namespace MaidHome.Gameplay.Maid
             bool warned = false;
             while (Time.unscaledTime < end)
             {
-                if (player != null && !player.IsPlayingClip(_hurtClipName))
+                if (!_hurtPartial && player != null && !string.IsNullOrEmpty(_activeHurtClip)
+                    && !player.IsPlayingClip(_activeHurtClip))
                 {
                     if (!warned)
                     {
                         warned = true;
-                        Debug.LogWarning("受伤动画 " + _hurtClipName + " 被 " + player.PlayingClipName
+                        Debug.LogWarning("受伤动画 " + _activeHurtClip + " 被 " + player.PlayingClipName
                             + " 顶掉了，已顶回来", this);
                     }
 
-                    player.Play(_hurtClipName);
+                    player.Play(_activeHurtClip);
                 }
 
                 yield return null;
@@ -917,11 +1003,68 @@ namespace MaidHome.Gameplay.Maid
             if (_hurtPlaying)
             {
                 _hurtPlaying = false;
-                ReturnToHurtClip(GetPlayer());
+                if (_hurtPartial)
+                {
+                    RestorePartialHurt();
+                }
+                else
+                {
+                    ReturnToHurtClip(GetPlayer());
+                }
             }
 
+            _hurtPartial = false;
+            _hurtTracks.Clear();
+            _hurtBones.Clear();
+            _hurtRestPositions.Clear();
+            _hurtRestRotations.Clear();
+            _hurtRestScales.Clear();
             _hurtReturnClip = null;
             _hurtReturnTime = 0f;
+            _activeHurtClip = null;
+        }
+
+        void ApplyPartialHurt()
+        {
+            if (!_hurtPartial || _hurtTracks.Count == 0)
+            {
+                return;
+            }
+
+            _hurtTime += Time.deltaTime;
+            float time = _hurtLength > 0.001f ? Mathf.Repeat(_hurtTime, _hurtLength) : _hurtTime;
+            for (int i = 0; i < _hurtTracks.Count; i++)
+            {
+                Transform bone = _hurtBones[i];
+                if (bone == null)
+                {
+                    continue;
+                }
+
+                Vector3 position;
+                Quaternion rotation;
+                Vector3 scale;
+                BedrockAnimationPlayer.Sample(_hurtTracks[i], time, out position, out rotation, out scale);
+                bone.localPosition = position;
+                bone.localRotation = rotation;
+                bone.localScale = scale;
+            }
+        }
+
+        void RestorePartialHurt()
+        {
+            for (int i = 0; i < _hurtBones.Count; i++)
+            {
+                Transform bone = _hurtBones[i];
+                if (bone != null)
+                {
+                    bone.localPosition = _hurtRestPositions[i];
+                    bone.localRotation = _hurtRestRotations[i];
+                    bone.localScale = _hurtRestScales[i];
+                }
+            }
+
+            _hurtTime = 0f;
         }
 
         void ReturnToHurtClip(BedrockAnimationPlayer player)

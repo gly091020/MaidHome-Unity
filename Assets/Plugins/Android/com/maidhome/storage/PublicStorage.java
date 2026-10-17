@@ -2,12 +2,15 @@ package com.maidhome.storage;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
+import android.util.Log;
 
 import com.unity3d.player.UnityPlayer;
 
@@ -53,38 +56,74 @@ public final class PublicStorage {
     }
 
     /**
-     * 申请权限：Android 11+ 打开"所有文件访问"的系统页（用户自己开开关），
-     * 10 及以下弹运行时权限对话框。返回有没有真的发起。
+     * 先弹应用自己的说明框，玩家点"去授权"才打开系统权限界面。
+     * Android 11+ 打开"所有文件访问"系统页，10 及以下弹运行时权限。
+     * 返回有没有把弹窗排进 UI 线程。
      */
     public static boolean requestAccess() {
         final Activity activity = UnityPlayer.currentActivity;
         if (activity == null) {
+            Log.w("MaidHomeStorage", "requestAccess: activity is null");
             return false;
         }
 
+        if (hasAccess()) {
+            Log.i("MaidHomeStorage", "requestAccess: already granted");
+            return false;
+        }
+
+        try {
+            activity.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        new AlertDialog.Builder(activity)
+                                .setTitle("存储权限")
+                                .setMessage("存储女仆数据需要外部数据读写权限，\n"
+                                        + "如果没有权限，虽然也可以存档，但更新应用后存档会被删除。")
+                                .setPositiveButton("去授权", new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog, int which) {
+                                        openPermissionUi(activity);
+                                    }
+                                })
+                                .setNegativeButton("暂不", null)
+                                .setCancelable(true)
+                                .show();
+                    } catch (Exception failed) {
+                        // 弹窗起不来就不要绕过用户同意直接跳设置
+                        Log.e("MaidHomeStorage", "permission dialog failed", failed);
+                    }
+                }
+            });
+            return true;
+        } catch (Exception failed) {
+            Log.e("MaidHomeStorage", "runOnUiThread failed", failed);
+            return false;
+        }
+    }
+
+    private static void openPermissionUi(Activity activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                         Uri.parse("package:" + activity.getPackageName()));
                 activity.startActivity(intent);
-                return true;
+                return;
             } catch (Exception notFound) {
                 try {
                     activity.startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
-                    return true;
                 } catch (Exception alsoFailed) {
-                    return false;
+                    // 系统页打不开就继续用私有目录
                 }
             }
+            return;
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             activity.requestPermissions(new String[] { Manifest.permission.WRITE_EXTERNAL_STORAGE },
                     WRITE_REQUEST_CODE);
-            return true;
         }
-
-        return false;
     }
 
     /**
@@ -122,4 +161,5 @@ public final class PublicStorage {
 
         return documents.getAbsolutePath();
     }
+
 }

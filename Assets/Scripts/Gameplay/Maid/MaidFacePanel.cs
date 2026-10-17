@@ -5,8 +5,8 @@ using UnityEngine.UI;
 namespace MaidHome.Gameplay.Maid
 {
     /// <summary>
-    /// 摸脸模式底部的条：台词、操作提示、连击数、「退出」。
-    /// 想用自定义 UI 就把 Bar / Line Text / Hint Text / Combo Text / Exit Button 五个引用接上，
+    /// 摸脸模式底部的条：台词、操作提示、连击数、「纯扇脸」、「退出」。
+    /// 想用自定义 UI 就把 Bar / Line Text / Hint Text / Combo Text / Slap Only Button / Exit Button 接上，
     /// 接上以后布局完全归你的 UI，这里只管开关、填字、转发按钮；一个都不接就退回自动生成的那条。
     /// 注意本组件平时是 MaidFaceInteraction 在运行时 AddComponent 出来的，要接线得在场景的 GUI 上先手动挂一份。
     /// </summary>
@@ -14,6 +14,7 @@ namespace MaidHome.Gameplay.Maid
     public sealed class MaidFacePanel : MonoBehaviour
     {
         public event Action ExitRequested;
+        public event Action SlapOnlyToggleRequested;
 
         [SerializeField] private string _hint = "两指可拽耳朵；脸上横划=扇脸，点眼睛=戳；空白处拖=拖脸";
         [SerializeField] private float _lineSeconds = 4f;
@@ -27,12 +28,15 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private Text _hintText;
         [Tooltip("连击数文本（可选）：接上就除了屏幕上的彩虹连击字以外，这里也显示一份纯文本")]
         [SerializeField] private Text _comboText;
+        [Tooltip("「纯扇脸」开关按钮：接上后文字会显示 开 / 关")]
+        [SerializeField] private Button _slapOnlyButton;
         [Tooltip("「退出」按钮，自定义 UI 必须接，否则退不出摸脸模式")]
         [SerializeField] private Button _exitButton;
 
         // 只给自动生成的那条用
         RectTransform _barRect;
         RectTransform _hintRect;
+        RectTransform _slapOnlyRect;
         RectTransform _exitRect;
         bool _generated;
 
@@ -50,6 +54,11 @@ namespace MaidHome.Gameplay.Maid
             if (_bar != null && !_generated && _exitButton == null)
             {
                 Debug.LogWarning("自定义摸脸底栏没接「退出」按钮，退不出摸脸模式", this);
+            }
+
+            if (_bar != null && !_generated && _slapOnlyButton == null)
+            {
+                Debug.LogWarning("自定义摸脸底栏没接「纯扇脸」按钮，这个开关不会显示", this);
             }
 
             // 自定义 bar 在场景里是勾着的，进 Play 先收起来
@@ -110,6 +119,21 @@ namespace MaidHome.Gameplay.Maid
             _comboText.text = count > 0 ? "连击 ×" + count : "";
         }
 
+        /// <summary>「纯扇脸」按钮文字跟着实际状态走</summary>
+        public void SetSlapOnly(bool on)
+        {
+            if (_slapOnlyButton == null)
+            {
+                return;
+            }
+
+            Text label = _slapOnlyButton.GetComponentInChildren<Text>();
+            if (label != null)
+            {
+                label.text = on ? "纯扇脸：开" : "纯扇脸：关";
+            }
+        }
+
         void ClearLine()
         {
             if (_lineText != null)
@@ -125,7 +149,13 @@ namespace MaidHome.Gameplay.Maid
                 _exitButton.onClick.RemoveListener(OnExitClicked);
             }
 
+            if (_slapOnlyButton != null)
+            {
+                _slapOnlyButton.onClick.RemoveListener(OnSlapOnlyClicked);
+            }
+
             ExitRequested = null;
+            SlapOnlyToggleRequested = null;
         }
 
         void Build()
@@ -147,6 +177,12 @@ namespace MaidHome.Gameplay.Maid
                 _exitButton.onClick.RemoveListener(OnExitClicked);
                 _exitButton.onClick.AddListener(OnExitClicked);
             }
+
+            if (_slapOnlyButton != null)
+            {
+                _slapOnlyButton.onClick.RemoveListener(OnSlapOnlyClicked);
+                _slapOnlyButton.onClick.AddListener(OnSlapOnlyClicked);
+            }
         }
 
         void OnExitClicked()
@@ -154,6 +190,14 @@ namespace MaidHome.Gameplay.Maid
             if (ExitRequested != null)
             {
                 ExitRequested();
+            }
+        }
+
+        void OnSlapOnlyClicked()
+        {
+            if (SlapOnlyToggleRequested != null)
+            {
+                SlapOnlyToggleRequested();
             }
         }
 
@@ -196,6 +240,8 @@ namespace MaidHome.Gameplay.Maid
 
             _exitRect = CreateButton(_barRect, "退出");
             _exitButton = _exitRect.GetComponent<Button>();
+            _slapOnlyRect = CreateButton(_barRect, "纯扇脸：关");
+            _slapOnlyButton = _slapOnlyRect.GetComponent<Button>();
 
             _generated = true;
             _bar.SetActive(false);
@@ -211,10 +257,25 @@ namespace MaidHome.Gameplay.Maid
             _barRect.sizeDelta = new Vector2(width, height);
             _barRect.anchoredPosition = new Vector2(0f, 32f);
 
-            _hintRect.sizeDelta = new Vector2(width - 420f, 46f);
+            _hintRect.sizeDelta = new Vector2(width - 390f, 46f);
             _hintRect.anchoredPosition = new Vector2(24f, 18f);
 
+            PlaceButton(_slapOnlyRect, -188f);
             PlaceExit(_exitRect);
+        }
+
+        static void PlaceButton(RectTransform rect, float offsetX)
+        {
+            if (rect == null)
+            {
+                return;
+            }
+
+            rect.anchorMin = new Vector2(1f, 0f);
+            rect.anchorMax = new Vector2(1f, 0f);
+            rect.pivot = new Vector2(1f, 0f);
+            rect.sizeDelta = new Vector2(150f, 54f);
+            rect.anchoredPosition = new Vector2(offsetX, 18f);
         }
 
         static void PlaceExit(RectTransform rect)

@@ -11,7 +11,7 @@ namespace MaidHome.Gameplay.Maid
     /// * 生成出来的刚体/碰撞体/关节只在运行时存在，`Clear()` 会先把身上自制的物理组件扫干净再重建；
     /// * 识别到的部位（头 / 身体 / 手脚 / 裙子 / 尾巴）把子树里的网格合成一块，
     ///   没识别到的网格各自一块（见 <see cref="MaidRagdollPlanner"/>）；
-    /// * 自碰撞和角度限制各有一个总开关，默认全关（最软的玩法）。
+    /// * 自碰撞默认全关；角度限制默认开着，关节用 10°/15° 的软限制。
     ///
     /// 玩法层只需要 Enter / Exit：Enter 关掉动画和角色控制器、让物理接管；
     /// Exit 把骨骼姿势写回去、组件恢复。
@@ -30,8 +30,9 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _massDensity = 40f;
         [SerializeField] private float _minMass = 0.3f;
         [SerializeField] private float _maxMass = 20f;
-        [SerializeField] private float _drag = 0.05f;
-        [SerializeField] private float _angularDrag = 0.1f;
+        [SerializeField] private float _drag = 0.5f;
+        [Tooltip("Rigidbody 的全局角阻尼。肢体抖得厉害就往上调")]
+        [SerializeField] private float _angularDrag = 5f;
 
         [Header("碰撞体")]
         [SerializeField] private float _friction = 0.6f;
@@ -41,14 +42,19 @@ namespace MaidHome.Gameplay.Maid
         [Tooltip("全关互相碰撞：所有物理块两两都不撞（头发穿身体、胳膊穿裙子都不会互相顶）")]
         [SerializeField] private bool _ignoreAllSelfCollision = true;
         [Tooltip("全关角度限制：关节自由转（只剩位置约束，等于球关节）")]
-        [SerializeField] private bool _noAngleLimits = true;
+        [SerializeField] private bool _noAngleLimits;
         [Tooltip("上面两个都关掉时才用这套：重叠的块之间取消碰撞、关节收紧")]
-        [SerializeField] private bool _handleOverlappingParts = true;
+        [SerializeField] private bool _handleOverlappingParts;
         [SerializeField] private float _overlapTwist = 10f;
         [SerializeField] private float _overlapSwing = 15f;
         [Tooltip("接头/四肢的常规角度（度），只在没全关角度限制时用")]
-        [SerializeField] private float _jointTwist = 60f;
-        [SerializeField] private float _jointSwing = 80f;
+        [SerializeField] private float _jointTwist = 10f;
+        [SerializeField] private float _jointSwing = 15f;
+        [Header("关节阻尼")]
+        [Tooltip("关节到达角度限制时的软弹簧刚度。0 = 硬限制")]
+        [SerializeField] private float _limitSpring = 50f;
+        [Tooltip("关节到达角度限制时的阻尼，越大越不容易在极限处抖")]
+        [SerializeField] private float _limitDamper = 5f;
         [Tooltip("关节被拉开多少米以后开始做投影修正，别设 0")]
         [SerializeField] private float _projectionDistance = 0.02f;
         [SerializeField] private float _projectionAngle = 8f;
@@ -68,7 +74,6 @@ namespace MaidHome.Gameplay.Maid
             typeof(MaidWanderer),
             typeof(BedrockAnimationPlayer),
             typeof(MaidSimpleBedrockAnimator),
-            typeof(MaidHurtBlink),
             typeof(MaidIdleBubble),
         };
 
@@ -96,6 +101,58 @@ namespace MaidHome.Gameplay.Maid
         public int OverlapPairCount { get; private set; }
         public bool SelfCollisionDisabled { get { return _ignoreAllSelfCollision; } }
         public bool AngleLimitsDisabled { get { return _noAngleLimits; } }
+        /// <summary>布娃娃刚体撞到东西时的冲击速度（米/秒）。给「玩全身」做闪红判定用。</summary>
+        public event Action<float> ImpactDetected;
+
+        /// <summary>
+        /// 把 Inspector 里的参数恢复成「玩全身」这套预设。
+        /// 旧组件已经序列化过旧的 No Angle Limits / Joint Twist / Swing，改脚本默认值不会自动覆盖它们；
+        /// 这里给右键菜单和运行时接管各留一个统一入口。
+        /// </summary>
+        [ContextMenu("恢复默认配置")]
+        public void ApplyDefaultPreset()
+        {
+            _buildOnStart = true;
+            _enterOnStart = true;
+            _massDensity = 40f;
+            _minMass = 0.3f;
+            _maxMass = 20f;
+            _drag = 0.5f;
+            _angularDrag = 1.5f;
+            _friction = 0.6f;
+            _bounce = 0f;
+            _ignoreAllSelfCollision = true;
+            _noAngleLimits = false;
+            _handleOverlappingParts = false;
+            _overlapTwist = 10f;
+            _overlapSwing = 15f;
+            _jointTwist = 10f;
+            _jointSwing = 15f;
+            _limitSpring = 50f;
+            _limitDamper = 5f;
+            _projectionDistance = 0.02f;
+            _projectionAngle = 8f;
+            _pauseBehaviours = true;
+        }
+
+        void Reset()
+        {
+            ApplyDefaultPreset();
+        }
+
+        /// <summary>
+        /// 「玩全身」用：关掉自动跑，按交互需要的设置重建好，等调用方自己 Enter。
+        /// 直接 AddComponent 的话 Start 还没来得及跑，这里先把开关写死，避免下一帧又自动接管一次。
+        /// </summary>
+        public MaidRagdollPlan PrepareForInteraction(bool ignoreAllSelfCollision, bool noAngleLimits)
+        {
+            ApplyDefaultPreset();
+            _buildOnStart = false;
+            _enterOnStart = false;
+            _ignoreAllSelfCollision = ignoreAllSelfCollision;
+            _noAngleLimits = noAngleLimits;
+            return Rebuild();
+        }
 
         void Start()
         {
@@ -221,6 +278,12 @@ namespace MaidHome.Gameplay.Maid
 
                     DestroyNow(colliders[j]);
                 }
+
+                MaidRagdollImpactRelay[] relays = target.GetComponents<MaidRagdollImpactRelay>();
+                for (int j = 0; j < relays.Length; j++)
+                {
+                    DestroyNow(relays[j]);
+                }
             }
 
             if (_material != null)
@@ -266,6 +329,9 @@ namespace MaidHome.Gameplay.Maid
                 rig.Body.isKinematic = true;
                 rig.Body.useGravity = false;
 
+                MaidRagdollImpactRelay relay = part.Bone.gameObject.AddComponent<MaidRagdollImpactRelay>();
+                relay.Owner = this;
+
                 // 碰撞体挂在各块网格自己的骨骼上：骨骼没有刚体，就自动属于上面那根刚体，
                 // 所以"头 + 脸 + 头发"是一根刚体带好几个凸网格碰撞体
                 for (int c = 0; c < part.Colliders.Count; c++)
@@ -293,9 +359,11 @@ namespace MaidHome.Gameplay.Maid
                     continue;
                 }
 
-                // 父子真的相交时，关节锚点放在相交区域的中心
+                // 父子真的相交时，关节锚点放在相交区域的中心；有多组碰撞体相交时，
+                // 选离子骨骼最近的那组，避免头/头发这种多碰撞体部位挑到偏的一块。
                 Vector3 anchor;
-                if (MaidRagdollOverlap.Overlaps(rig.Colliders, parent.Colliders, out anchor))
+                if (MaidRagdollOverlap.OverlapsNearest(rig.Colliders, parent.Colliders,
+                        rig.Bone.position, out anchor))
                 {
                     rig.JointAnchor = anchor;
                     rig.UseJointAnchor = true;
@@ -319,6 +387,24 @@ namespace MaidHome.Gameplay.Maid
             plan.Warnings.Add("自碰撞：" + (_ignoreAllSelfCollision ? "全关" : "只关相邻/重叠的")
                 + "；角度限制：" + (_noAngleLimits ? "全关（关节自由）" : "开着")
                 + "；重叠 " + OverlapPairCount + " 对");
+        }
+
+        internal void ReportImpact(Collision collision)
+        {
+            if (!IsActive || ImpactDetected == null)
+            {
+                return;
+            }
+
+            Rigidbody body = GetComponent<Rigidbody>();
+            float mass = body != null ? Mathf.Max(0.05f, body.mass) : 1f;
+            // relativeVelocity 对擦碰也会很大，冲量除以质量更接近"这一下有多重"
+            float impulseSpeed = collision.impulse.magnitude / mass;
+            float speed = Mathf.Max(collision.relativeVelocity.magnitude, impulseSpeed);
+            if (ImpactDetected != null)
+            {
+                ImpactDetected(speed);
+            }
         }
 
         void AddCollider(MaidRagdollCollider entry, Rig rig)
@@ -460,6 +546,12 @@ namespace MaidHome.Gameplay.Maid
             joint.highTwistLimit = Limit(twist);
             joint.swing1Limit = Limit(swing);
             joint.swing2Limit = Limit(swing * 0.5f);
+
+            SoftJointLimitSpring limitSpring = new SoftJointLimitSpring();
+            limitSpring.spring = Mathf.Max(0f, _limitSpring);
+            limitSpring.damper = Mathf.Max(0f, _limitDamper);
+            joint.twistLimitSpring = limitSpring;
+            joint.swingLimitSpring = limitSpring;
             return joint;
         }
 
@@ -477,6 +569,16 @@ namespace MaidHome.Gameplay.Maid
                 {
                     direction = box.center;
                     break;
+                }
+
+                MeshCollider mesh = rig.Colliders[i] as MeshCollider;
+                if (mesh != null)
+                {
+                    direction = rig.Bone.InverseTransformPoint(mesh.bounds.center);
+                    if (direction.sqrMagnitude > 1e-6f)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -608,6 +710,7 @@ namespace MaidHome.Gameplay.Maid
                     SetEnabled(found[i], false);
                 }
             }
+
         }
 
         void ResumeBehaviours()

@@ -111,6 +111,49 @@ namespace MaidHome.Gameplay.Maid
             return false;
         }
 
+        /// <summary>
+        /// 同两遍碰撞体之间可能有多组相交，选相交中心离 <paramref name="near"/> 最近的那组。
+        /// 合并部位（头 + 头发、裙子 + 裙摆）里用这个，锚点不会落在无关的另一块上。
+        /// </summary>
+        public static bool OverlapsNearest(IList<Collider> first, IList<Collider> second, Vector3 near,
+            out Vector3 center)
+        {
+            center = Vector3.zero;
+            if (first == null || second == null)
+            {
+                return false;
+            }
+
+            bool found = false;
+            float best = float.MaxValue;
+            for (int a = 0; a < first.Count; a++)
+            {
+                if (first[a] == null)
+                {
+                    continue;
+                }
+
+                for (int b = 0; b < second.Count; b++)
+                {
+                    Vector3 candidate;
+                    if (second[b] == null || !Overlaps(first[a], second[b], out candidate))
+                    {
+                        continue;
+                    }
+
+                    float distance = (candidate - near).sqrMagnitude;
+                    if (distance < best)
+                    {
+                        best = distance;
+                        center = candidate;
+                        found = true;
+                    }
+                }
+            }
+
+            return found;
+        }
+
         // ------------------------------------------------------------ 内部
 
         static void AddCollider(GameObject holder, MaidRagdollCollider entry, List<Collider> into)

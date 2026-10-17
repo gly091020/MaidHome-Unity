@@ -23,6 +23,10 @@ namespace MaidHome.Gameplay.Maid
         public event Action FeedRequested;
         /// 点了「梳毛」
         public event Action GroomRequested;
+        /// 点了「玩全身」
+        public event Action BodyRequested;
+        /// 点了「挂件」（打开第二层：选挂牌 / 面具）
+        public event Action AttachRequested;
 
         [Tooltip("正式面板根节点。留空会自动生成一个占位面板")]
         [SerializeField] private GameObject _panelRoot;
@@ -37,6 +41,10 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private Button _feedButton;
         [Tooltip("「梳毛」按钮。自定义面板留空的话，运行时会照「摸尾巴」按钮的样子在左边补一个")]
         [SerializeField] private Button _groomButton;
+        [Tooltip("「玩全身」按钮。自定义面板留空的话，运行时会在「梳毛」按钮上方补一个")]
+        [SerializeField] private Button _bodyButton;
+        [Tooltip("「挂件」按钮（打开第二层选挂牌 / 面具）。字段名是旧的，别改——场景里已经接在这上面了")]
+        [SerializeField] private Button _signButton;
         [Tooltip("只对自动生成的面板生效：贴到屏幕下方。自定义面板不会被动")]
         [SerializeField] private bool _placeAtBottom = true;
         [SerializeField] private float _bottomOffset = 40f;
@@ -85,6 +93,18 @@ namespace MaidHome.Gameplay.Maid
                 _groomButton.onClick.AddListener(RequestGroom);
             }
 
+            EnsureBodyButton();
+            if (_bodyButton != null)
+            {
+                _bodyButton.onClick.AddListener(RequestBody);
+            }
+
+            EnsureSignButton();
+            if (_signButton != null)
+            {
+                _signButton.onClick.AddListener(RequestAttach);
+            }
+
             Close();
         }
 
@@ -115,11 +135,23 @@ namespace MaidHome.Gameplay.Maid
                 _groomButton.onClick.RemoveListener(RequestGroom);
             }
 
+            if (_bodyButton != null)
+            {
+                _bodyButton.onClick.RemoveListener(RequestBody);
+            }
+
+            if (_signButton != null)
+            {
+                _signButton.onClick.RemoveListener(RequestAttach);
+            }
+
             CloseRequested = null;
             TailRequested = null;
             FaceRequested = null;
             FeedRequested = null;
             GroomRequested = null;
+            BodyRequested = null;
+            AttachRequested = null;
         }
 
         public void Open(MaidSaveData maid, bool tailAvailable)
@@ -139,6 +171,12 @@ namespace MaidHome.Gameplay.Maid
 
         public void Open(MaidSaveData maid, bool tailAvailable, bool faceAvailable, bool feedAvailable,
             bool groomAvailable)
+        {
+            Open(maid, tailAvailable, faceAvailable, feedAvailable, groomAvailable, true);
+        }
+
+        public void Open(MaidSaveData maid, bool tailAvailable, bool faceAvailable, bool feedAvailable,
+            bool groomAvailable, bool bodyAvailable)
         {
             EnsureCreated();
             PlacePanel();
@@ -162,9 +200,13 @@ namespace MaidHome.Gameplay.Maid
             SetFaceAvailable(faceAvailable);
             SetFeedAvailable(feedAvailable);
             SetGroomAvailable(groomAvailable);
+            SetBodyAvailable(bodyAvailable);
+            // 挂件入口一直可点：里面挂牌 / 面具各自可不可用由第二层面板判断
+            SetAttachAvailable(true);
             if (_optionsText != null)
             {
-                _optionsText.text = BuildOptions(maid, tailAvailable, faceAvailable, feedAvailable, groomAvailable);
+                _optionsText.text = BuildOptions(maid, tailAvailable, faceAvailable, feedAvailable,
+                    groomAvailable, bodyAvailable);
             }
         }
 
@@ -201,6 +243,15 @@ namespace MaidHome.Gameplay.Maid
             if (_groomButton != null)
             {
                 _groomButton.interactable = available;
+            }
+        }
+
+        /// 模型认不出可用的物理块就把「玩全身」灰掉
+        public void SetBodyAvailable(bool available)
+        {
+            if (_bodyButton != null)
+            {
+                _bodyButton.interactable = available;
             }
         }
 
@@ -252,8 +303,33 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
+        public void RequestBody()
+        {
+            if (BodyRequested != null)
+            {
+                BodyRequested();
+            }
+        }
+
+        public void RequestAttach()
+        {
+            if (AttachRequested != null)
+            {
+                AttachRequested();
+            }
+        }
+
+        /// 挂件入口默认一直可点（具体哪样能挂由第二层面板判断）
+        public void SetAttachAvailable(bool available)
+        {
+            if (_signButton != null)
+            {
+                _signButton.interactable = available;
+            }
+        }
+
         static string BuildOptions(MaidSaveData maid, bool tailAvailable, bool faceAvailable, bool feedAvailable,
-            bool groomAvailable)
+            bool groomAvailable, bool bodyAvailable)
         {
             string body;
             if (tailAvailable && faceAvailable)
@@ -279,7 +355,9 @@ namespace MaidHome.Gameplay.Maid
 
             string food = feedAvailable ? "「喂蛋糕」选挡位喂她吃东西\n" : "";
             string groom = groomAvailable ? "「梳毛」沿头发、耳朵、尾巴刷；刷反了会疼\n" : "";
-            return food + groom + body;
+            string bodyLine = bodyAvailable ? "「玩全身」按住任意部位拖动；退出会还原站姿\n" : "";
+            string attach = "「挂件」选挂牌子（写字、吓唬别的女仆）或戴面具（贴照片）\n";
+            return food + groom + bodyLine + attach + body;
         }
 
         static string BuildInfo(MaidSaveData maid)
@@ -311,27 +389,32 @@ namespace MaidHome.Gameplay.Maid
             panelRect.anchorMax = new Vector2(0.5f, 0.5f);
             panelRect.pivot = new Vector2(0.5f, 0.5f);
             panelRect.anchoredPosition = Vector2.zero;
-            panelRect.sizeDelta = new Vector2(720f, 300f);
+            panelRect.sizeDelta = new Vector2(840f, 380f);
             Image background = panel.GetComponent<Image>();
             background.color = new Color(0.08f, 0.08f, 0.1f, 0.92f);
 
             _panelRoot = panel;
-            _titleText = CreateText(panel.transform, "Title", new Vector2(0f, 118f), new Vector2(680f, 40f),
+            _titleText = CreateText(panel.transform, "Title", new Vector2(0f, 140f), new Vector2(800f, 40f),
                 22, TextAnchor.MiddleCenter);
-            _infoText = CreateText(panel.transform, "Info", new Vector2(0f, 28f), new Vector2(680f, 120f),
+            _infoText = CreateText(panel.transform, "Info", new Vector2(0f, 40f), new Vector2(800f, 120f),
                 16, TextAnchor.UpperLeft);
-            _optionsText = CreateText(panel.transform, "Options", new Vector2(0f, -68f), new Vector2(680f, 60f),
+            _optionsText = CreateText(panel.transform, "Options", new Vector2(0f, -70f), new Vector2(800f, 100f),
                 16, TextAnchor.UpperLeft);
-            _closeButton = CreateButton(panel.transform, "关闭", new Vector2(300f, -122f),
-                new Vector2(90f, 34f));
-            _tailButton = CreateButton(panel.transform, "摸尾巴", new Vector2(-290f, -122f),
-                new Vector2(140f, 34f));
-            _faceButton = CreateButton(panel.transform, "摸脸", new Vector2(-130f, -122f),
+            // 底下这一排共 7 个：从 -390 排到 330，左右各留 60
+            _tailButton = CreateButton(panel.transform, "摸尾巴", new Vector2(-336f, -160f),
+                new Vector2(108f, 34f));
+            _faceButton = CreateButton(panel.transform, "摸脸", new Vector2(-238f, -160f),
+                new Vector2(92f, 34f));
+            _groomButton = CreateButton(panel.transform, "梳毛", new Vector2(-138f, -160f),
+                new Vector2(92f, 34f));
+            _bodyButton = CreateButton(panel.transform, "玩全身", new Vector2(-30f, -160f),
+                new Vector2(112f, 34f));
+            _feedButton = CreateButton(panel.transform, "喂蛋糕", new Vector2(82f, -160f),
                 new Vector2(110f, 34f));
-            _groomButton = CreateButton(panel.transform, "梳毛", new Vector2(10f, -122f),
-                new Vector2(110f, 34f));
-            _feedButton = CreateButton(panel.transform, "喂蛋糕", new Vector2(150f, -122f),
-                new Vector2(130f, 34f));
+            _signButton = CreateButton(panel.transform, "挂件", new Vector2(190f, -160f),
+                new Vector2(100f, 34f));
+            _closeButton = CreateButton(panel.transform, "关闭", new Vector2(290f, -160f),
+                new Vector2(80f, 34f));
             _generated = true;
         }
 
@@ -416,6 +499,67 @@ namespace MaidHome.Gameplay.Maid
             _groomButton = CreateButton(_panelRoot.transform, "梳毛", position, size);
             Debug.LogWarning("自定义女仆交互面板没接「梳毛」按钮，先照「摸尾巴」的位置往左补了一个；"
                 + "建议自己加一个按钮接到 MaidInteractionPanel 的 Groom Button", this);
+        }
+
+        /// <summary>
+        /// 自定义面板没接「玩全身」按钮时，挂在「梳毛」按钮正上方。
+        /// 底下那一排通常已经排满，往上方补不容易压到别的按钮；建议自己接线。
+        /// </summary>
+        void EnsureBodyButton()
+        {
+            if (_bodyButton != null || _panelRoot == null || _generated)
+            {
+                // 自动生成的那份在 EnsureCreated 里已经排好了位置
+                return;
+            }
+
+            Button template = _groomButton != null ? _groomButton : _tailButton;
+            Vector2 position = new Vector2(0f, -110f);
+            Vector2 size = new Vector2(110f, 34f);
+            if (template != null)
+            {
+                RectTransform rect = template.transform as RectTransform;
+                if (rect != null)
+                {
+                    position = new Vector2(rect.anchoredPosition.x,
+                        rect.anchoredPosition.y + rect.sizeDelta.y + 8f);
+                    size = rect.sizeDelta;
+                }
+            }
+
+            _bodyButton = CreateButton(_panelRoot.transform, "玩全身", position, size);
+            Debug.LogWarning("自定义女仆交互面板没接「玩全身」按钮，先挂在「梳毛」上方了；"
+                + "建议自己加一个按钮接到 MaidInteractionPanel 的 Body Button", this);
+        }
+
+        /// <summary>
+        /// 自定义面板没接「挂牌」按钮时，照「梳毛」按钮的样子再往左补一个（兜底，建议自己接线）。
+        /// </summary>
+        void EnsureSignButton()
+        {
+            if (_signButton != null || _panelRoot == null || _generated)
+            {
+                // 自动生成的那份在 EnsureCreated 里已经排好了位置
+                return;
+            }
+
+            Button template = _groomButton != null ? _groomButton : _tailButton != null ? _tailButton : _faceButton;
+            Vector2 position = new Vector2(0f, -152f);
+            Vector2 size = new Vector2(100f, 34f);
+            if (template != null)
+            {
+                RectTransform rect = template.transform as RectTransform;
+                if (rect != null)
+                {
+                    position = new Vector2(rect.anchoredPosition.x - rect.sizeDelta.x - 12f,
+                        rect.anchoredPosition.y);
+                    size = rect.sizeDelta;
+                }
+            }
+
+            _signButton = CreateButton(_panelRoot.transform, "挂件", position, size);
+            Debug.LogWarning("自定义女仆交互面板没接「挂件」按钮，先照「梳毛」的位置往左补了一个；"
+                + "建议自己加一个按钮接到 MaidInteractionPanel 的 Sign Button（字段名是旧的）", this);
         }
 
         void PlacePanel()

@@ -8,14 +8,18 @@ using UnityEngine;
 namespace MaidHome.EditorTools
 {
     /// <summary>
-    /// 一键出 Android 包：临时把脚本后端切成 IL2CPP、架构只勾 ARM64，编译完把 apk 拷到桌面
+    /// 一键出 Android 包：正常入口临时把脚本后端切成 IL2CPP、架构只勾 ARM64，编译完把 apk 拷到桌面
     /// （文件名 = PlayerSettings.productName + bundleVersion + .apk）。
-    /// 不管成功、失败还是中途报错，都会在 finally 里把脚本后端 / 架构 / AAB 开关还原成原来的样子。
-    /// 只动这三项，包名、签名、版本号、场景列表都不碰。
+    /// 调试入口额外打开 Development Build 和 Script Debugging，构建完自动安装运行（Build & Run），
+    /// 输出的包名带 -debug；
+    /// 调试入口不切脚本后端/架构，沿用工程当前设置，避免 Mono↔IL2CPP 的长时间重编。
+    /// 不管成功、失败还是中途报错，都会在 finally 里把这些临时开关还原成原来的样子。
+    /// 包名、签名、版本号、场景列表都不碰。
     /// </summary>
     public static class AndroidApkBuilder
     {
         const string MenuPath = "Tools/MaidHome/打包 Android APK（IL2CPP + ARM64）";
+        const string DebugMenuPath = "Tools/MaidHome/打包并运行 Android APK（调试 Development，沿用当前后端）";
 
         // 旧设置存在 SessionState 里：万一改设置/构建时 Unity 重新加载了脚本域（那 finally 就跑不到），
         // 下面那个 InitializeOnLoadMethod 还能补一次还原，别把工程留成 IL2CPP + ARM64
@@ -23,6 +27,8 @@ namespace MaidHome.EditorTools
         const string BackendKey = "MaidHome.ApkBuilder.Backend";
         const string ArchKey = "MaidHome.ApkBuilder.Architectures";
         const string AppBundleKey = "MaidHome.ApkBuilder.AppBundle";
+        const string DevelopmentKey = "MaidHome.ApkBuilder.Development";
+        const string AllowDebuggingKey = "MaidHome.ApkBuilder.AllowDebugging";
 
         [InitializeOnLoadMethod]
         static void RestoreInterrupted()
@@ -33,11 +39,22 @@ namespace MaidHome.EditorTools
             }
 
             RestoreOldSettings();
-            Debug.LogWarning("[打包] 上一次打包中途被打断（脚本域重新加载），已经把临时切成的 IL2CPP / ARM64 还原回去");
+            Debug.LogWarning("[打包] 上一次打包中途被打断（脚本域重新加载），已经还原临时改过的构建设置");
         }
 
         [MenuItem(MenuPath, false, 40)]
         public static void BuildApk()
+        {
+            BuildApkInternal(false);
+        }
+
+        [MenuItem(DebugMenuPath, false, 41)]
+        public static void BuildDebugApk()
+        {
+            BuildApkInternal(true);
+        }
+
+        static void BuildApkInternal(bool debug)
         {
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android, BuildTarget.Android))
             {
@@ -75,23 +92,34 @@ namespace MaidHome.EditorTools
             ScriptingImplementation oldBackend = PlayerSettings.GetScriptingBackend(BuildTargetGroup.Android);
             AndroidArchitecture oldArchitectures = PlayerSettings.Android.targetArchitectures;
             bool oldAppBundle = EditorUserBuildSettings.buildAppBundle;
-            SaveOldSettings(oldBackend, oldArchitectures, oldAppBundle);
+            bool oldDevelopment = EditorUserBuildSettings.development;
+            bool oldAllowDebugging = EditorUserBuildSettings.allowDebugging;
+            SaveOldSettings(oldBackend, oldArchitectures, oldAppBundle, oldDevelopment, oldAllowDebugging);
 
             string tempDir = Path.Combine(Path.GetTempPath(), "MaidHomeApk");
             string tempApk = Path.Combine(tempDir, "build.apk");
-            string apkName = SafeFileName(PlayerSettings.productName + PlayerSettings.bundleVersion) + ".apk";
+            string apkName = SafeFileName(PlayerSettings.productName + PlayerSettings.bundleVersion
+                + (debug ? "-debug" : "")) + ".apk";
             string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
             string target = Path.Combine(desktop, apkName);
 
             try
             {
-                PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
-                PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+                if (!debug)
+                {
+                    PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
+                    PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+                }
+
                 EditorUserBuildSettings.buildAppBundle = false;
+                EditorUserBuildSettings.development = debug;
+                EditorUserBuildSettings.allowDebugging = debug;
                 AssetDatabase.SaveAssets();
 
                 Debug.Log("[打包] 脚本后端 = " + PlayerSettings.GetScriptingBackend(BuildTargetGroup.Android)
                     + "，架构 = " + PlayerSettings.Android.targetArchitectures
+                    + "，Development = " + EditorUserBuildSettings.development
+                    + "，Script Debugging = " + EditorUserBuildSettings.allowDebugging
                     + "，场景 " + scenes.Length + " 个，输出 " + apkName);
 
                 if (Directory.Exists(tempDir))
@@ -106,7 +134,9 @@ namespace MaidHome.EditorTools
                 options.locationPathName = tempApk;
                 options.target = BuildTarget.Android;
                 options.targetGroup = BuildTargetGroup.Android;
-                options.options = BuildOptions.None;
+                options.options = debug
+                    ? BuildOptions.Development | BuildOptions.AllowDebugging | BuildOptions.AutoRunPlayer
+                    : BuildOptions.None;
 
                 BuildReport report = BuildPipeline.BuildPlayer(options);
                 if (report == null || report.summary.result != BuildResult.Succeeded)
@@ -122,8 +152,9 @@ namespace MaidHome.EditorTools
                 File.Copy(tempApk, target, true);
                 double mb = report.summary.totalSize / 1024.0 / 1024.0;
                 Debug.Log("[打包] 成功：" + target + "（" + mb.ToString("0.0") + " MB）");
-                EditorUtility.DisplayDialog("打包完成",
-                    apkName + "\n已经放到桌面\n" + mb.ToString("0.0") + " MB", "好");
+                EditorUtility.DisplayDialog(debug ? "调试包构建完成" : "打包完成",
+                    apkName + "\n已经放到桌面\n" + mb.ToString("0.0") + " MB"
+                    + (debug ? "\nDevelopment Build / Script Debugging 已开启，已请求自动安装运行" : ""), "好");
                 EditorUtility.RevealInFinder(target);
             }
             catch (Exception e)
@@ -137,12 +168,15 @@ namespace MaidHome.EditorTools
             }
         }
 
-        static void SaveOldSettings(ScriptingImplementation backend, AndroidArchitecture architectures, bool appBundle)
+        static void SaveOldSettings(ScriptingImplementation backend, AndroidArchitecture architectures,
+            bool appBundle, bool development, bool allowDebugging)
         {
             SessionState.SetBool(DirtyKey, true);
             SessionState.SetInt(BackendKey, (int)backend);
             SessionState.SetInt(ArchKey, (int)architectures);
             SessionState.SetBool(AppBundleKey, appBundle);
+            SessionState.SetBool(DevelopmentKey, development);
+            SessionState.SetBool(AllowDebuggingKey, allowDebugging);
         }
 
         static void RestoreOldSettings()
@@ -152,11 +186,15 @@ namespace MaidHome.EditorTools
             PlayerSettings.Android.targetArchitectures =
                 (AndroidArchitecture)SessionState.GetInt(ArchKey, (int)AndroidArchitecture.ARMv7);
             EditorUserBuildSettings.buildAppBundle = SessionState.GetBool(AppBundleKey, false);
+            EditorUserBuildSettings.development = SessionState.GetBool(DevelopmentKey, false);
+            EditorUserBuildSettings.allowDebugging = SessionState.GetBool(AllowDebuggingKey, false);
             AssetDatabase.SaveAssets();
             SessionState.SetBool(DirtyKey, false);
             Debug.Log("[打包] 设置已还原：后端 = " + PlayerSettings.GetScriptingBackend(BuildTargetGroup.Android)
                 + "，架构 = " + PlayerSettings.Android.targetArchitectures
-                + "，AAB = " + EditorUserBuildSettings.buildAppBundle);
+                + "，AAB = " + EditorUserBuildSettings.buildAppBundle
+                + "，Development = " + EditorUserBuildSettings.development
+                + "，Script Debugging = " + EditorUserBuildSettings.allowDebugging);
         }
 
         static string[] EnabledScenes()

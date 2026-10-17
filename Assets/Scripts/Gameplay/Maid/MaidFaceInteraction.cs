@@ -136,7 +136,7 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _slapLineCooldownSeconds = 0.6f;
 
         [Header("受伤动画")]
-        [Tooltip("被拉疼 / 被戳 / 被扇的时候借这条动画演一下（TLM 的 game_lost = 战败姿势；想换回原来的 attacked 就直接改这里）")]
+        [Tooltip("被拉疼 / 被戳 / 被扇的时候借这条动画；有 game_lost2 时优先用 game_lost2。识别到头时只驱动 head 子树")]
         [SerializeField] private string _hurtClipName = "game_lost";
         [Tooltip("不管动画多长，演这么久就换回来（game_lost 本身有 100 秒，靠这个截断）")]
         [SerializeField] private float _hurtSeconds = 5f;
@@ -144,6 +144,14 @@ namespace MaidHome.Gameplay.Maid
         [Header("调试")]
         [Tooltip("把触发范围画在屏幕上（红=眼睛 黄=脸颊 青=耳朵 蓝=整张脸），运行时按 F8 也能开关")]
         [SerializeField] private bool _showZones;
+
+        [Header("面具 / 纯扇脸")]
+        [Tooltip("纯扇脸：只认横挥的耳光，戳脸 / 拖脸 / 拽耳朵全部关掉。"
+            + "Inspector 里设默认值；运行时按钮直接接 ToggleSlapOnly() 或 SetSlapOnly(bool)")]
+        [SerializeField] private bool _slapOnly;
+        [Tooltip("戴面具时不判眼睛（眼睛区落到脸区，点一下不会有反应；横挥照样扇）")]
+        [SerializeField] private bool _maskBlocksEyes = true;
+        bool _masked;
 
         [Header("连击显示")]
         [Tooltip("「连击 ×N」字号占屏幕宽度的比例")]
@@ -156,6 +164,8 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _milestoneTopRatio = 0.12f;
         [Tooltip("100 连彩蛋粒子的尺寸倍率（模组原始尺寸 = 1，搬到手机上要放大）")]
         [SerializeField] private float _comboParticleScale = 2f;
+        [Tooltip("连击数在 _comboSizeRatio 之上再放大多少（1.45 = 比原来的大一圈）")]
+        [SerializeField] private float _comboScale = 1.45f;
 
         // 台词照抄 moreanimation 的 zh_cn
         static readonly string[] EarLines =
@@ -291,6 +301,15 @@ namespace MaidHome.Gameplay.Maid
 
         Coroutine _hurtRoutine;
         bool _hurtPlaying;
+        bool _hurtPartial;
+        string _activeHurtClip;
+        readonly List<BedrockBoneTrack> _hurtTracks = new List<BedrockBoneTrack>();
+        readonly List<Transform> _hurtBones = new List<Transform>();
+        readonly List<Vector3> _hurtRestPositions = new List<Vector3>();
+        readonly List<Quaternion> _hurtRestRotations = new List<Quaternion>();
+        readonly List<Vector3> _hurtRestScales = new List<Vector3>();
+        float _hurtLength;
+        float _hurtTime;
         string _hurtReturnClip;
         float _hurtReturnTime;
 
@@ -305,6 +324,68 @@ namespace MaidHome.Gameplay.Maid
             }
 
             return MaidFaceRig.Build(agent.transform, _faceEyeUvMin, _faceEyeUvSize, _facePixels).Supports;
+        }
+
+        /// <summary>纯扇脸开着没有（按钮可以读它显示状态）</summary>
+        public bool SlapOnly
+        {
+            get { return _slapOnly; }
+        }
+
+        /// <summary>这段女仆现在戴着面具（戴着的时候不判眼睛）</summary>
+        public bool Masked
+        {
+            get { return _masked; }
+        }
+
+        /// <summary>现在眼睛区要不要无视（戴面具且没在 Inspector 里关掉那条规则）</summary>
+        bool EyesBlocked
+        {
+            get { return _masked && _maskBlocksEyes; }
+        }
+
+        /// <summary>纯扇脸状态变了（按钮可以订阅它刷新文字）</summary>
+        public event Action<bool> SlapOnlyChanged;
+
+        /// <summary>按钮直接接这个：切纯扇脸</summary>
+        public void ToggleSlapOnly()
+        {
+            SetSlapOnly(!_slapOnly);
+        }
+
+        /// <summary>纯扇脸：只认横挥的耳光（戳脸 / 拖脸 / 拽耳朵都关掉）。切换时把进行中的手势收掉</summary>
+        public void SetSlapOnly(bool on)
+        {
+            if (_slapOnly == on)
+            {
+                return;
+            }
+
+            _slapOnly = on;
+            _faceDrag = null;
+            _presses.Clear();
+            _strokeFinger = -1;
+            _strokeHeld = false;
+            // 正在拽的耳朵松手，让它们自己滑回去
+            if (_leftEar != null)
+            {
+                _leftEar.FingerId = -1;
+            }
+
+            if (_rightEar != null)
+            {
+                _rightEar.FingerId = -1;
+            }
+
+            if (_panel != null)
+            {
+                _panel.SetSlapOnly(on);
+            }
+
+            if (SlapOnlyChanged != null)
+            {
+                SlapOnlyChanged(on);
+            }
         }
 
         public bool Begin(MaidAgent agent, AudioClip slapClip)
@@ -324,6 +405,9 @@ namespace MaidHome.Gameplay.Maid
             }
 
             _agent = agent;
+            // 面具是在别的模式里戴的，这里进模式缓一次就够（模式里不会换）
+            MaidMaskView mask = MaidMaskView.Find(agent);
+            _masked = mask != null && mask.Worn;
             _slapClip = slapClip;
             // 场景里没接就退回包里自带的那个，省得忘了接线就没声音
             if (_slapClip == null)
@@ -344,6 +428,7 @@ namespace MaidHome.Gameplay.Maid
             if (_panel != null)
             {
                 _panel.SetCombo(0);
+                _panel.SetSlapOnly(_slapOnly);
                 _panel.Show();
             }
 
@@ -354,6 +439,8 @@ namespace MaidHome.Gameplay.Maid
             _comboHud.MilestoneSizeRatio = _milestoneSizeRatio;
             _comboHud.MilestoneTopRatio = _milestoneTopRatio;
             _comboHud.ParticleScale = _comboParticleScale;
+            _comboHud.ComboScale = _comboScale;
+            _comboHud.RateUnit = "下/秒";
             _comboHud.Clear();
             _panelCombo = -1;
             IsActive = true;
@@ -384,8 +471,14 @@ namespace MaidHome.Gameplay.Maid
 
         void OnDestroy()
         {
+            if (_panel != null)
+            {
+                _panel.SlapOnlyToggleRequested -= ToggleSlapOnly;
+            }
+
             Release();
             Ended = null;
+            SlapOnlyChanged = null;
         }
 
         void Release()
@@ -525,7 +618,8 @@ namespace MaidHome.Gameplay.Maid
             press.Last = pointer.Position;
 
             // 拖脸：起手在空白处、拖过阈值就开始，之后一直跟到松手；这条手势不会去判耳光
-            if (press.Zone == Zone.None && (_faceDrag == null || _faceDrag.FingerId == pointer.FingerId))
+            if (!_slapOnly && press.Zone == Zone.None
+                && (_faceDrag == null || _faceDrag.FingerId == pointer.FingerId))
             {
                 if (_faceDrag == null)
                 {
@@ -619,6 +713,8 @@ namespace MaidHome.Gameplay.Maid
             {
                 return;
             }
+
+            ApplyPartialHurt();
 
             // 弹簧是 20Hz 算的，补一个固定步长
             _simAccumulator += Time.unscaledDeltaTime;
@@ -1119,6 +1215,12 @@ namespace MaidHome.Gameplay.Maid
         /// </summary>
         void ClickFace(PressState press)
         {
+            // 纯扇脸：戳脸整个关掉（连冷却都不占）
+            if (_slapOnly)
+            {
+                return;
+            }
+
             if (Time.unscaledTime - _lastPokeAt < _pokeCooldownSeconds)
             {
                 return;
@@ -1346,6 +1448,13 @@ namespace MaidHome.Gameplay.Maid
                 return Zone.None;
             }
 
+            // 纯扇脸：整个头只算一张脸，耳朵/眼睛/脸颊都不单独判。
+            // 点一下不会有反应（ClickFace 对 Face 不做任何事），只认横挥。
+            if (_slapOnly)
+            {
+                return InEllipse(screen, Dilate(zones.Head, 1.1f)) ? Zone.Face : Zone.None;
+            }
+
             // 耳朵优先于脸：先判耳朵，再判眼睛/脸颊/整张脸（作者要求"先拽耳朵再扇脸"）。
             // 耳朵的包围盒有三分之一压在头顶上（taisho 实测 33%），所以那两块脸上的位置抓不到扇脸；
             // 嫌耳朵区太大的话调 _earZoneScale（它缩放的就是这两块椭圆）
@@ -1359,12 +1468,13 @@ namespace MaidHome.Gameplay.Maid
                 return Zone.RightEar;
             }
 
-            if (InEllipse(screen, zones.LeftEye))
+            // 戴面具（正面有板子）时戳不到眼睛：眼睛区不判，落到脸颊/整张脸（整张脸本来就不戳）
+            if (!EyesBlocked && InEllipse(screen, zones.LeftEye))
             {
                 return Zone.LeftEye;
             }
 
-            if (InEllipse(screen, zones.RightEye))
+            if (!EyesBlocked && InEllipse(screen, zones.RightEye))
             {
                 return Zone.RightEye;
             }
@@ -1616,31 +1726,101 @@ namespace MaidHome.Gameplay.Maid
 
         /// <summary>
         /// 借女仆自己的「被打」动画演一下（TLM 里这条叫 attacked），演完换回原来那条。
-        /// 正在演的时候不重开，不然连着扇耳光会一直卡在第一帧。
+        /// 再次受伤时动画不回到第一帧，但 5 秒计时要从这一次重新开始。
         /// </summary>
         void PlayHurtAnimation()
         {
-            if (_hurtPlaying || _agent == null || string.IsNullOrEmpty(_hurtClipName))
+            if (_agent == null || string.IsNullOrEmpty(_hurtClipName))
             {
                 return;
             }
 
             BedrockAnimationPlayer player = _agent.GetComponent<BedrockAnimationPlayer>();
-            if (player == null || !player.HasClip(_hurtClipName))
+            string clip = PickHurtClip(player);
+            if (player == null || !player.HasClip(clip))
             {
                 return;
             }
 
-            _hurtReturnClip = player.PlayingClipName;
-            _hurtReturnTime = player.PlayingTime;
-            if (!player.Play(_hurtClipName))
+            if (_hurtPlaying)
             {
-                _hurtReturnClip = null;
+                // 动画继续沿着当前时间播，只把 5 秒的结束时间重新拨到 now + _hurtSeconds。
+                // 这里不能 player.Play，否则连打时每一下都卡回第一帧。
+                if (_hurtRoutine != null)
+                {
+                    StopCoroutine(_hurtRoutine);
+                }
+
+                _hurtRoutine = StartCoroutine(RestoreHurt(player));
                 return;
+            }
+
+            _activeHurtClip = clip;
+            _hurtPartial = false;
+            _hurtTracks.Clear();
+            _hurtBones.Clear();
+            _hurtRestPositions.Clear();
+            _hurtRestRotations.Clear();
+            _hurtRestScales.Clear();
+
+            bool headRecognized = _rig != null && _rig.Head != null;
+            if (headRecognized)
+            {
+                List<BedrockBoneTrack> tracks = new List<BedrockBoneTrack>();
+                List<Transform> bones = new List<Transform>();
+                if (player.TryGetTracksUnder(clip, _rig.Head, tracks, bones))
+                {
+                    for (int i = 0; i < tracks.Count; i++)
+                    {
+                        if (bones[i] == null)
+                        {
+                            continue;
+                        }
+
+                        _hurtTracks.Add(tracks[i]);
+                        _hurtBones.Add(bones[i]);
+                        _hurtRestPositions.Add(bones[i].localPosition);
+                        _hurtRestRotations.Add(bones[i].localRotation);
+                        _hurtRestScales.Add(bones[i].localScale);
+                    }
+
+                    _hurtLength = Mathf.Max(0f, player.ClipLength(clip));
+                    _hurtTime = 0f;
+                    _hurtPartial = _hurtTracks.Count > 0;
+                }
+
+                if (!_hurtPartial)
+                {
+                    // 识别到头就绝不整身控制；这条 clip 没有头部轨道就不演。
+                    _activeHurtClip = null;
+                    return;
+                }
+            }
+            else
+            {
+                // 没有头部才允许整身动画。
+                _hurtReturnClip = player.PlayingClipName;
+                _hurtReturnTime = player.PlayingTime;
+                if (!player.Play(clip))
+                {
+                    _hurtReturnClip = null;
+                    _activeHurtClip = null;
+                    return;
+                }
             }
 
             _hurtPlaying = true;
             _hurtRoutine = StartCoroutine(RestoreHurt(player));
+        }
+
+        string PickHurtClip(BedrockAnimationPlayer player)
+        {
+            if (player != null && player.HasClip("game_lost2"))
+            {
+                return "game_lost2";
+            }
+
+            return _hurtClipName;
         }
 
         IEnumerator RestoreHurt(BedrockAnimationPlayer player)
@@ -1648,7 +1828,17 @@ namespace MaidHome.Gameplay.Maid
             yield return HoldHurt(player, Mathf.Max(0.2f, _hurtSeconds));
             _hurtRoutine = null;
             _hurtPlaying = false;
-            ReturnToHurtClip(player);
+            if (_hurtPartial)
+            {
+                RestorePartialHurt();
+                _hurtPartial = false;
+            }
+            else
+            {
+                ReturnToHurtClip(player);
+            }
+
+            _activeHurtClip = null;
         }
 
         /// <summary>
@@ -1661,16 +1851,17 @@ namespace MaidHome.Gameplay.Maid
             bool warned = false;
             while (Time.unscaledTime < end)
             {
-                if (player != null && !player.IsPlayingClip(_hurtClipName))
+                if (!_hurtPartial && player != null && !string.IsNullOrEmpty(_activeHurtClip)
+                    && !player.IsPlayingClip(_activeHurtClip))
                 {
                     if (!warned)
                     {
                         warned = true;
-                        Debug.LogWarning("受伤动画 " + _hurtClipName + " 被 " + player.PlayingClipName
+                        Debug.LogWarning("受伤动画 " + _activeHurtClip + " 被 " + player.PlayingClipName
                             + " 顶掉了，已顶回来", this);
                     }
 
-                    player.Play(_hurtClipName);
+                    player.Play(_activeHurtClip);
                 }
 
                 yield return null;
@@ -1688,11 +1879,68 @@ namespace MaidHome.Gameplay.Maid
             if (_hurtPlaying)
             {
                 _hurtPlaying = false;
-                ReturnToHurtClip(_agent != null ? _agent.GetComponent<BedrockAnimationPlayer>() : null);
+                if (_hurtPartial)
+                {
+                    RestorePartialHurt();
+                }
+                else
+                {
+                    ReturnToHurtClip(_agent != null ? _agent.GetComponent<BedrockAnimationPlayer>() : null);
+                }
             }
 
+            _hurtPartial = false;
+            _activeHurtClip = null;
+            _hurtTracks.Clear();
+            _hurtBones.Clear();
+            _hurtRestPositions.Clear();
+            _hurtRestRotations.Clear();
+            _hurtRestScales.Clear();
             _hurtReturnClip = null;
             _hurtReturnTime = 0f;
+        }
+
+        void ApplyPartialHurt()
+        {
+            if (!_hurtPartial || _hurtTracks.Count == 0)
+            {
+                return;
+            }
+
+            _hurtTime += Time.deltaTime;
+            float time = _hurtLength > 0.001f ? Mathf.Repeat(_hurtTime, _hurtLength) : _hurtTime;
+            for (int i = 0; i < _hurtTracks.Count; i++)
+            {
+                Transform bone = _hurtBones[i];
+                if (bone == null)
+                {
+                    continue;
+                }
+
+                Vector3 position;
+                Quaternion rotation;
+                Vector3 scale;
+                BedrockAnimationPlayer.Sample(_hurtTracks[i], time, out position, out rotation, out scale);
+                bone.localPosition = position;
+                bone.localRotation = rotation;
+                bone.localScale = scale;
+            }
+        }
+
+        void RestorePartialHurt()
+        {
+            for (int i = 0; i < _hurtBones.Count; i++)
+            {
+                Transform bone = _hurtBones[i];
+                if (bone != null)
+                {
+                    bone.localPosition = _hurtRestPositions[i];
+                    bone.localRotation = _hurtRestRotations[i];
+                    bone.localScale = _hurtRestScales[i];
+                }
+            }
+
+            _hurtTime = 0f;
         }
 
         void ReturnToHurtClip(BedrockAnimationPlayer player)
@@ -1742,8 +1990,12 @@ namespace MaidHome.Gameplay.Maid
             // 触发区算出来是屏幕坐标（左下角原点），GUI 是左上角原点，画之前要翻 y。
             // 蓝的按 HitZone 那个椭圆画（头框放大 1.1），不然显示的范围比实际判定小一圈
             DrawEllipse(Dilate(zones.Head, 1.1f), new Color(0.30f, 0.60f, 1f, 0.18f));
-            DrawEllipse(zones.LeftEye, new Color(1f, 0.25f, 0.25f, 0.42f));
-            DrawEllipse(zones.RightEye, new Color(1f, 0.25f, 0.25f, 0.42f));
+            // 戴面具/纯扇脸时眼睛区不判，画淡一点
+            Color eyeColor = EyesBlocked || _slapOnly
+                ? new Color(1f, 0.25f, 0.25f, 0.12f)
+                : new Color(1f, 0.25f, 0.25f, 0.42f);
+            DrawEllipse(zones.LeftEye, eyeColor);
+            DrawEllipse(zones.RightEye, eyeColor);
             DrawEllipse(zones.LeftCheek, new Color(1f, 0.85f, 0.2f, 0.34f));
             DrawEllipse(zones.RightCheek, new Color(1f, 0.85f, 0.2f, 0.34f));
             if (zones.HasLeftEar)
@@ -1757,8 +2009,11 @@ namespace MaidHome.Gameplay.Maid
             }
 
             GUI.color = Color.white;
+            string note = _slapOnly ? "　【纯扇脸：只认横挥】"
+                : EyesBlocked ? "　【戴面具：不判眼睛】" : "";
             GUI.Label(new Rect(16f, 16f, 900f, 30f),
-                "触发范围（F8 隐藏）：红=眼睛  黄=脸颊  青=耳朵（比脸优先）  蓝=脸；起手在蓝区/红/黄=扇脸或戳脸，别处=拖脸");
+                "触发范围（F8 隐藏）：红=眼睛  黄=脸颊  青=耳朵（比脸优先）  蓝=脸；"
+                + "起手在蓝区/红/黄=扇脸或戳脸，别处=拖脸" + note);
         }
 
         static void DrawEllipse(Rect rect, Color color)
@@ -1822,6 +2077,8 @@ namespace MaidHome.Gameplay.Maid
 
             _panel.ExitRequested -= End;
             _panel.ExitRequested += End;
+            _panel.SlapOnlyToggleRequested -= ToggleSlapOnly;
+            _panel.SlapOnlyToggleRequested += ToggleSlapOnly;
         }
 
         /// <summary>

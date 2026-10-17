@@ -13,7 +13,9 @@ namespace MaidHome.Core.Storage
     [DisallowMultipleComponent]
     public sealed class PublicStorageGate : MonoBehaviour
     {
-        const string AskedKey = "maidhome.public_storage_asked";
+        // 版本号故意换了：旧版本已经写过 maidhome.public_storage_asked，
+        // 那会挡住这次新加的说明弹窗。
+        const string AskedKey = "maidhome.public_storage_asked_v2";
 
         static PublicStorageGate _instance;
 
@@ -63,20 +65,28 @@ namespace MaidHome.Core.Storage
                 return;
             }
 
-            PlayerPrefs.SetInt(AskedKey, 1);
-            PlayerPrefs.Save();
-            RequestPermission();
+            if (TryRequestPermission())
+            {
+                PlayerPrefs.SetInt(AskedKey, 1);
+                PlayerPrefs.Save();
+            }
         }
 
         /// <summary>再问一次权限（设置界面的按钮接这个）</summary>
         public void RequestPermission()
         {
+            TryRequestPermission();
+        }
+
+        bool TryRequestPermission()
+        {
             if (PublicStorage.RequestPermission())
             {
-                return;
+                return true;
             }
 
             Debug.LogWarning("[存档] 没能打开系统授权页，继续用当前目录：" + AppPaths.SavesRoot);
+            return false;
         }
 
         void OnApplicationFocus(bool focused)

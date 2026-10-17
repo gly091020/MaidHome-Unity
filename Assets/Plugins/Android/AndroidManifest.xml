@@ -27,7 +27,9 @@
         android:icon="@mipmap/app_icon"
         android:allowBackup="false"
         android:theme="@style/UnityThemeSelector">
-        <activity android:name="com.unity3d.player.UnityPlayerActivity"
+        <!-- 主 Activity 是自建的 MaidHomeActivity（就是 UnityPlayerActivity 加了个「起系统照片选择器」），
+             插件要接 onActivityResult 就只能这么干，Unity 自带的那个不转发给插件。 -->
+        <activity android:name="com.maidhome.game.MaidHomeActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="portrait"
