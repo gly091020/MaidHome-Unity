@@ -12,6 +12,7 @@ namespace MaidHome.Gameplay.Maid
     public sealed class MaidBodyPanel : MonoBehaviour
     {
         public event Action ExitRequested;
+        public event Action MotionToggleRequested;
 
         [SerializeField] private string _hint = "按住身上任意部位拖动；松手后她会自然倒下，「退出」还原站姿";
 
@@ -22,11 +23,15 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private Text _hintText;
         [Tooltip("「退出」按钮，自定义 UI 必须接，否则退不出玩全身模式")]
         [SerializeField] private Button _exitButton;
+        [Tooltip("「体感」开关按钮；自定义 UI 不接就没有这个开关")]
+        [SerializeField] private Button _motionButton;
 
         bool _generated;
+        bool _motionOn;
         RectTransform _barRect;
         RectTransform _hintRect;
         RectTransform _exitRect;
+        RectTransform _motionRect;
 
         public bool IsVisible { get; private set; }
 
@@ -66,6 +71,8 @@ namespace MaidHome.Gameplay.Maid
             {
                 _hintText.text = _hint;
             }
+
+            UpdateMotionText();
         }
 
         public void Hide()
@@ -84,7 +91,13 @@ namespace MaidHome.Gameplay.Maid
                 _exitButton.onClick.RemoveListener(OnExitClicked);
             }
 
+            if (_motionButton != null)
+            {
+                _motionButton.onClick.RemoveListener(OnMotionClicked);
+            }
+
             ExitRequested = null;
+            MotionToggleRequested = null;
         }
 
         void Build()
@@ -98,6 +111,12 @@ namespace MaidHome.Gameplay.Maid
             {
                 _exitButton.onClick.RemoveListener(OnExitClicked);
                 _exitButton.onClick.AddListener(OnExitClicked);
+            }
+
+            if (_motionButton != null)
+            {
+                _motionButton.onClick.RemoveListener(OnMotionClicked);
+                _motionButton.onClick.AddListener(OnMotionClicked);
             }
         }
 
@@ -135,6 +154,8 @@ namespace MaidHome.Gameplay.Maid
 
             _exitRect = CreateButton(_barRect, "退出");
             _exitButton = _exitRect.GetComponent<Button>();
+            _motionRect = CreateButton(_barRect, "体感：关");
+            _motionButton = _motionRect.GetComponent<Button>();
 
             _generated = true;
             _bar.SetActive(false);
@@ -150,7 +171,7 @@ namespace MaidHome.Gameplay.Maid
             _barRect.sizeDelta = new Vector2(width, height);
             _barRect.anchoredPosition = new Vector2(0f, 32f);
 
-            _hintRect.sizeDelta = new Vector2(width - 220f, 54f);
+            _hintRect.sizeDelta = new Vector2(width - 400f, 54f);
             _hintRect.anchoredPosition = new Vector2(24f, 18f);
 
             _exitRect.anchorMin = new Vector2(1f, 0f);
@@ -158,6 +179,48 @@ namespace MaidHome.Gameplay.Maid
             _exitRect.pivot = new Vector2(1f, 0f);
             _exitRect.sizeDelta = new Vector2(150f, 54f);
             _exitRect.anchoredPosition = new Vector2(-24f, 18f);
+
+            _motionRect.anchorMin = new Vector2(1f, 0f);
+            _motionRect.anchorMax = new Vector2(1f, 0f);
+            _motionRect.pivot = new Vector2(1f, 0f);
+            _motionRect.sizeDelta = new Vector2(190f, 54f);
+            _motionRect.anchoredPosition = new Vector2(-186f, 18f);
+        }
+
+        public void SetMotion(bool on)
+        {
+            _motionOn = on;
+            UpdateMotionText();
+        }
+
+        public void SetMotionAvailable(bool available)
+        {
+            if (_motionButton != null)
+            {
+                _motionButton.interactable = available;
+            }
+        }
+
+        public void SetHint(string hint)
+        {
+            if (_hintText != null)
+            {
+                _hintText.text = string.IsNullOrEmpty(hint) ? _hint : hint;
+            }
+        }
+
+        void UpdateMotionText()
+        {
+            if (_motionButton == null)
+            {
+                return;
+            }
+
+            Text label = _motionButton.GetComponentInChildren<Text>();
+            if (label != null)
+            {
+                label.text = _motionOn ? "体感：开" : "体感：关";
+            }
         }
 
         void OnExitClicked()
@@ -165,6 +228,14 @@ namespace MaidHome.Gameplay.Maid
             if (ExitRequested != null)
             {
                 ExitRequested();
+            }
+        }
+
+        void OnMotionClicked()
+        {
+            if (MotionToggleRequested != null)
+            {
+                MotionToggleRequested();
             }
         }
 

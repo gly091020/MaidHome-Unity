@@ -431,6 +431,18 @@ namespace MaidHome.Gameplay.Maid
         /// <summary>一次受伤：计时累加，最多一分钟；识别到头时只动 head 子树</summary>
         public static void Hurt(MaidAgent agent, bool allowFullBody = true, Transform head = null)
         {
+            if (agent == null)
+            {
+                return;
+            }
+
+            MaidHaptics.Hurt(agent);
+            MaidMysterySounds.Hurt(agent, !allowFullBody);
+            if (!MaidInjuryRules.Allows(agent))
+            {
+                return;
+            }
+
             MaidHurtAnimation hurt = Ensure(agent);
             if (hurt != null)
             {

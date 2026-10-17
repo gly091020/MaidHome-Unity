@@ -13,6 +13,8 @@
         android:maxSdkVersion="32" />
     <!-- Portal 的 PC <-> 手机传输走 loopback TCP，没有这个权限连 loopback 都会失败 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 受伤体感震动 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Android 11 起应用默认「看不见」别的应用：不在这里声明的话，
          getPackageInfo("com.google.ar.core") 会抛 NameNotFoundException，看起来和没装一模一样。

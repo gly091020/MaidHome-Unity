@@ -38,6 +38,21 @@ namespace MaidHome.Gameplay.Maid
         [Tooltip("关掉关节角度限制（只剩位置约束），摆起来最软。默认关闭，也就是保留 10°/15° 限制")]
         [SerializeField] private bool _disableAngleLimits;
 
+        [Header("体感模式")]
+        [Tooltip("传感器重力大小（米/秒²）")]
+        [SerializeField] private float _sensorGravity = 9.81f;
+        [Tooltip("晃动产生的线性加速度倍率")]
+        [SerializeField] private float _sensorAccelerationScale = 4f;
+        [Tooltip("加速度变化速度（jerk）的额外倍率，快速甩手机时更明显")]
+        [SerializeField] private float _sensorJerkScale = 0.12f;
+        [Tooltip("重力方向低通滤波速度；越大越跟手，越小越稳")]
+        [SerializeField] private float _sensorSmoothing = 6f;
+        [Tooltip("小于这个加速度就当没动，避免静止时抖动")]
+        [SerializeField] private float _sensorDeadzone = 0.01f;
+        [Tooltip("屏幕盒的深度 / 屏幕高度。0.7 表示向镜头前后各留 35% 屏高")]
+        [SerializeField] private float _motionDepthRatio = 0.7f;
+        [SerializeField] private float _motionWallThickness = 0.08f;
+
         [Header("碰撞反馈")]
         [Tooltip("布娃娃撞到东西时，冲击速度超过这个值就闪红（米/秒）")]
         [SerializeField] private float _impactFlashSpeed = 4f;
@@ -77,6 +92,19 @@ namespace MaidHome.Gameplay.Maid
         float _nextImpactFlashAt = -100f;
         float _lastHurtAt = -100f;
         Transform _headBone;
+        bool _motionMode;
+        bool _sensorInitialized;
+        Vector3 _sensorLowPass;
+        Vector3 _sensorPrevious;
+        GameObject _motionSpace;
+        PhysicMaterial _motionWallMaterial;
+        Camera _projectionCamera;
+        bool _projectionSaved;
+        bool _savedOrthographic;
+        float _savedFieldOfView;
+        float _savedOrthographicSize;
+        float _savedNear;
+        float _savedFar;
 
         /// <summary>这个女仆能不能玩全身。模型里至少要能认出物理块</summary>
         public bool Supports(MaidAgent agent)
@@ -146,6 +174,8 @@ namespace MaidHome.Gameplay.Maid
             CachePickColliders();
             if (_panel != null)
             {
+                _panel.SetMotion(false);
+                _panel.SetHint("");
                 _panel.Show();
             }
 
@@ -192,6 +222,7 @@ namespace MaidHome.Gameplay.Maid
 
         void Release()
         {
+            SetMotionMode(false);
             for (int i = 0; i < _grabs.Count; i++)
             {
                 DestroyGrab(_grabs[i]);
@@ -218,12 +249,67 @@ namespace MaidHome.Gameplay.Maid
             _ragdoll = null;
             _agent = null;
             _headBone = null;
+            _motionMode = false;
+            _sensorInitialized = false;
             IsActive = false;
+        }
+
+        void FixedUpdate()
+        {
+            if (!IsActive || !_motionMode || _ragdoll == null)
+            {
+                return;
+            }
+
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                return;
+            }
+
+            Vector3 raw = ReadAcceleration();
+            Vector3 previous = _sensorPrevious;
+            _sensorPrevious = raw;
+            if (!_sensorInitialized)
+            {
+                _sensorLowPass = raw;
+                _sensorInitialized = true;
+            }
+            else
+            {
+                float blend = 1f - Mathf.Exp(-Mathf.Max(0.1f, _sensorSmoothing) * Time.fixedDeltaTime);
+                _sensorLowPass = Vector3.Lerp(_sensorLowPass, raw, blend);
+            }
+
+            Vector3 linear = raw - _sensorLowPass;
+            if (linear.magnitude < Mathf.Max(0f, _sensorDeadzone))
+            {
+                linear = Vector3.zero;
+            }
+
+            linear = Vector3.ClampMagnitude(linear, 2f);
+            float deltaTime = Mathf.Max(0.001f, Time.fixedDeltaTime);
+            Vector3 jerk = Vector3.ClampMagnitude((raw - previous) / deltaTime, 30f);
+            Vector3 gravity = GravityFromSensor(camera, _sensorLowPass);
+            Vector3 linearWorld = camera.transform.right * linear.x
+                + camera.transform.up * linear.y
+                + camera.transform.forward * linear.z;
+            Vector3 jerkWorld = camera.transform.right * jerk.x
+                + camera.transform.up * jerk.y
+                + camera.transform.forward * jerk.z;
+            Vector3 acceleration = linearWorld * Mathf.Max(0f, _sensorAccelerationScale)
+                + jerkWorld * Mathf.Max(0f, _sensorJerkScale);
+            _ragdoll.SetSensorForces(true, gravity, acceleration);
         }
 
         void OnRagdollImpact(float speed)
         {
             if (!IsActive || _agent == null || speed < _impactFlashSpeed)
+            {
+                return;
+            }
+
+            if (!MaidInjuryRules.Allows(_agent))
             {
                 return;
             }
@@ -646,6 +732,276 @@ namespace MaidHome.Gameplay.Maid
                 || lower.Contains("wall");
         }
 
+        void ToggleMotionMode()
+        {
+            if (!IsActive)
+            {
+                return;
+            }
+
+            SetMotionMode(!_motionMode);
+        }
+
+        void SetMotionMode(bool on)
+        {
+            if (on && !IsActive)
+            {
+                return;
+            }
+
+            if (on && !HasAccelerometer())
+            {
+                if (_panel != null)
+                {
+                    _panel.SetMotion(false);
+                    _panel.SetHint("当前设备没有加速度计，无法开启体感");
+                }
+
+                return;
+            }
+
+            if (_motionMode == on)
+            {
+                if (!on)
+                {
+                    if (_ragdoll != null)
+                    {
+                        _ragdoll.SetSensorForces(false, Vector3.zero, Vector3.zero);
+                    }
+
+                    DestroyMotionSpace();
+                    RestoreProjection();
+                    _sensorInitialized = false;
+                }
+
+                if (_panel != null)
+                {
+                    _panel.SetMotion(on);
+                }
+
+                return;
+            }
+
+            _motionMode = on;
+            if (on)
+            {
+                Camera camera = Camera.main;
+                if (camera == null)
+                {
+                    _motionMode = false;
+                    return;
+                }
+
+                SaveProjection(camera);
+                if (camera.orthographic)
+                {
+                    float distance = DistanceToAgent(camera);
+                    float fov = 2f * Mathf.Atan(camera.orthographicSize / Mathf.Max(0.1f, distance)) * Mathf.Rad2Deg;
+                    camera.orthographic = false;
+                    camera.fieldOfView = Mathf.Clamp(fov, 5f, 120f);
+                }
+
+                BuildMotionSpace(camera);
+                _sensorLowPass = ReadAcceleration();
+                _sensorPrevious = _sensorLowPass;
+                _sensorInitialized = true;
+                if (_ragdoll != null)
+                {
+                    _ragdoll.SetSensorForces(true, GravityFromSensor(camera, _sensorLowPass), Vector3.zero);
+                }
+
+                if (_panel != null)
+                {
+                    _panel.SetMotion(true);
+                    _panel.SetHint("体感开启：倾斜手机改变重力，晃动会给布娃娃加速度");
+                }
+
+                return;
+            }
+
+            if (_ragdoll != null)
+            {
+                _ragdoll.SetSensorForces(false, Vector3.zero, Vector3.zero);
+            }
+
+            DestroyMotionSpace();
+            RestoreProjection();
+            _sensorInitialized = false;
+            if (_panel != null)
+            {
+                _panel.SetMotion(false);
+                _panel.SetHint("");
+            }
+        }
+
+        bool HasAccelerometer()
+        {
+            return PointerInput.SupportsAccelerometer || PointerInput.Acceleration.sqrMagnitude > 0.0001f;
+        }
+
+        Vector3 ReadAcceleration()
+        {
+            Vector3 raw = PointerInput.Acceleration;
+            if (raw.sqrMagnitude < 0.0001f)
+            {
+                return Vector3.down;
+            }
+
+            switch (Screen.orientation)
+            {
+                case ScreenOrientation.PortraitUpsideDown:
+                    return new Vector3(-raw.x, -raw.y, raw.z);
+                case ScreenOrientation.LandscapeLeft:
+                    return new Vector3(-raw.y, raw.x, raw.z);
+                case ScreenOrientation.LandscapeRight:
+                    return new Vector3(raw.y, -raw.x, raw.z);
+                default:
+                    return raw;
+            }
+        }
+
+        Vector3 GravityFromSensor(Camera camera, Vector3 sensor)
+        {
+            Vector3 direction = camera.transform.right * sensor.x
+                + camera.transform.up * sensor.y
+                + camera.transform.forward * sensor.z;
+            if (direction.sqrMagnitude < 0.0001f)
+            {
+                direction = -camera.transform.up;
+            }
+
+            return direction.normalized * Mathf.Max(0.1f, _sensorGravity);
+        }
+
+        float DistanceToAgent(Camera camera)
+        {
+            if (_agent == null || camera == null)
+            {
+                return 2f;
+            }
+
+            return Mathf.Max(0.5f, Vector3.Dot(_agent.GetBounds().center - camera.transform.position,
+                camera.transform.forward));
+        }
+
+        void SaveProjection(Camera camera)
+        {
+            if (camera == null || _projectionSaved)
+            {
+                return;
+            }
+
+            _projectionCamera = camera;
+            _savedOrthographic = camera.orthographic;
+            _savedFieldOfView = camera.fieldOfView;
+            _savedOrthographicSize = camera.orthographicSize;
+            _savedNear = camera.nearClipPlane;
+            _savedFar = camera.farClipPlane;
+            _projectionSaved = true;
+        }
+
+        void RestoreProjection()
+        {
+            if (!_projectionSaved)
+            {
+                return;
+            }
+
+            if (_projectionCamera != null)
+            {
+                _projectionCamera.orthographic = _savedOrthographic;
+                _projectionCamera.fieldOfView = _savedFieldOfView;
+                _projectionCamera.orthographicSize = _savedOrthographicSize;
+                _projectionCamera.nearClipPlane = _savedNear;
+                _projectionCamera.farClipPlane = _savedFar;
+            }
+
+            _projectionCamera = null;
+            _projectionSaved = false;
+        }
+
+        void BuildMotionSpace(Camera camera)
+        {
+            DestroyMotionSpace();
+            if (_agent == null || camera == null)
+            {
+                return;
+            }
+
+            float distance = DistanceToAgent(camera);
+
+            float height;
+            if (camera.orthographic)
+            {
+                height = camera.orthographicSize * 2f;
+            }
+            else
+            {
+                height = 2f * distance * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            }
+
+            float width = height * Mathf.Max(0.1f, camera.aspect);
+            float depth = Mathf.Max(0.6f, height * Mathf.Clamp(_motionDepthRatio, 0.2f, 3f));
+            Vector3 center = camera.transform.position + camera.transform.forward * distance;
+
+            _motionSpace = new GameObject("MaidBodyMotionSpace");
+            _motionSpace.transform.SetPositionAndRotation(center, camera.transform.rotation);
+            _motionWallMaterial = new PhysicMaterial("MaidBodyMotionWall");
+            _motionWallMaterial.dynamicFriction = 0.4f;
+            _motionWallMaterial.staticFriction = 0.4f;
+            _motionWallMaterial.bounciness = 0f;
+
+            float halfWidth = width * 0.5f;
+            float halfHeight = height * 0.5f;
+            // 后墙不能跑到相机后面：深度最多到相机前 near 处
+            float halfDepth = Mathf.Min(depth * 0.5f,
+                Mathf.Max(0.2f, distance - camera.nearClipPlane - 0.15f));
+            depth = halfDepth * 2f;
+            float thickness = Mathf.Max(0.02f, _motionWallThickness);
+            AddMotionWall("Left", new Vector3(-halfWidth - thickness * 0.5f, 0f, 0f),
+                new Vector3(thickness, height + thickness * 2f, depth + thickness * 2f));
+            AddMotionWall("Right", new Vector3(halfWidth + thickness * 0.5f, 0f, 0f),
+                new Vector3(thickness, height + thickness * 2f, depth + thickness * 2f));
+            AddMotionWall("Bottom", new Vector3(0f, -halfHeight - thickness * 0.5f, 0f),
+                new Vector3(width + thickness * 2f, thickness, depth + thickness * 2f));
+            AddMotionWall("Top", new Vector3(0f, halfHeight + thickness * 0.5f, 0f),
+                new Vector3(width + thickness * 2f, thickness, depth + thickness * 2f));
+            AddMotionWall("Back", new Vector3(0f, 0f, -halfDepth - thickness * 0.5f),
+                new Vector3(width + thickness * 2f, height + thickness * 2f, thickness));
+            AddMotionWall("Front", new Vector3(0f, 0f, halfDepth + thickness * 0.5f),
+                new Vector3(width + thickness * 2f, height + thickness * 2f, thickness));
+        }
+
+        void AddMotionWall(string name, Vector3 localPosition, Vector3 size)
+        {
+            if (_motionSpace == null)
+            {
+                return;
+            }
+
+            GameObject wall = new GameObject(name);
+            wall.transform.SetParent(_motionSpace.transform, false);
+            wall.transform.localPosition = localPosition;
+            BoxCollider collider = wall.AddComponent<BoxCollider>();
+            collider.size = size;
+            collider.sharedMaterial = _motionWallMaterial;
+        }
+
+        void DestroyMotionSpace()
+        {
+            if (_motionSpace != null)
+            {
+                Destroy(_motionSpace);
+                _motionSpace = null;
+            }
+
+            if (_motionWallMaterial != null)
+            {
+                Destroy(_motionWallMaterial);
+                _motionWallMaterial = null;
+            }
+        }
+
         void EnsurePanel()
         {
             if (_panel == null)
@@ -665,6 +1021,8 @@ namespace MaidHome.Gameplay.Maid
 
             _panel.ExitRequested -= End;
             _panel.ExitRequested += End;
+            _panel.MotionToggleRequested -= ToggleMotionMode;
+            _panel.MotionToggleRequested += ToggleMotionMode;
         }
 
         /// <summary>场景里手摆的 MaidBodyPanel（挂在别的物体上、并且自己接了 bar）</summary>

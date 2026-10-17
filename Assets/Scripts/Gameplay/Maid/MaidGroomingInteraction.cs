@@ -1148,6 +1148,12 @@ namespace MaidHome.Gameplay.Maid
 
         void Against()
         {
+            if (!MaidInjuryRules.Allows(_agent))
+            {
+                SetHint("逆着毛刷：这只女仆不会触发受伤");
+                return;
+            }
+
             if (Time.unscaledTime - _lastAgainstAt < _againstCooldown)
             {
                 return;
@@ -1160,6 +1166,8 @@ namespace MaidHome.Gameplay.Maid
             MaidAudioService.Play(_agent, MaidSoundId.Hurt, false, _voiceVolume);
             MaidChatBubble.Show(_agent, line, _lineSeconds);
             MaidTears.Hurt(_agent, 0.5f);
+            MaidHaptics.Hurt(_agent);
+            MaidMysterySounds.Hurt(_agent, false);
             if (_panel != null)
             {
                 _panel.ShowLine(line, _lineSeconds);

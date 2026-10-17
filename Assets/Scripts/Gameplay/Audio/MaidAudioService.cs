@@ -32,6 +32,11 @@ namespace MaidHome.Gameplay.Audio
                 return;
             }
 
+            if (eventId == MaidSoundId.Hurt && !MaidInjuryRules.Allows(agent))
+            {
+                return;
+            }
+
             if (!test && !RollFrequency(agent.Save.SoundFrequency))
             {
                 return;

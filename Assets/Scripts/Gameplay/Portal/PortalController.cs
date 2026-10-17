@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MaidHome.Core.Settings;
 using MaidHome.Gameplay.Audio;
 using MaidHome.Interop.Maid;
 using MaidHome.Interop.Portal;
@@ -92,6 +93,12 @@ namespace MaidHome.Gameplay.Portal
 
         void Awake()
         {
+            int configuredPort = GameSettingsStore.Current.PortalPort;
+            if (configuredPort > 0 && configuredPort <= 65535)
+            {
+                _port = configuredPort;
+            }
+
             EnsureServer();
             RefreshMaids();
         }
@@ -168,6 +175,34 @@ namespace MaidHome.Gameplay.Portal
             _transferActive = false;
             _message = "服务已停止";
             RaiseChanged();
+        }
+
+        /// <summary>设置界面的端口改动；正在监听时先停再按新端口重启。</summary>
+        public void SetPort(int port)
+        {
+            if (port <= 0 || port > 65535 || port == _port)
+            {
+                return;
+            }
+
+            bool wasRunning = IsRunning;
+            if (wasRunning)
+            {
+                StopServer();
+            }
+
+            if (_server != null)
+            {
+                _server.Dispose();
+                _server = null;
+            }
+
+            _port = port;
+            EnsureServer();
+            if (wasRunning)
+            {
+                StartServer();
+            }
         }
 
         public void RefreshMaids()

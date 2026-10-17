@@ -456,6 +456,11 @@ namespace MaidHome.Gameplay.Maid
 
         void Complain()
         {
+            if (!MaidInjuryRules.Allows(_agent))
+            {
+                return;
+            }
+
             if (Time.unscaledTime - _lastComplainTime < _complainCooldownSeconds)
             {
                 return;
@@ -468,6 +473,8 @@ namespace MaidHome.Gameplay.Maid
             MaidAudioService.Play(_agent, MaidSoundId.Hurt, false, _soundVolume);
             MaidChatBubble.Show(_agent, MaidEasterEgg.PickHurt(_agent, OverstretchLines), _lineSeconds);
             MaidTears.Hurt(_agent, 0.5f);
+            MaidHaptics.Hurt(_agent);
+            MaidMysterySounds.Hurt(_agent, false);
         }
 
         void OnSniff()

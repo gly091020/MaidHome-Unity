@@ -1228,6 +1228,11 @@ namespace MaidHome.Gameplay.Maid
             {
                 case Zone.LeftEye:
                 case Zone.RightEye:
+                    if (!MaidInjuryRules.Allows(_agent))
+                    {
+                        return;
+                    }
+
                     Kick(side * _eyeYawDegrees, _eyePitchDegrees, 0f);
                     // 戳的反应有自己的冷却（默认 0 = 每次都演），别被拖脸那句的 1 秒冷却连带限制
                     if (Time.unscaledTime - _lastPokeReactionAt >= _pokeReactionCooldownSeconds)
@@ -1246,6 +1251,11 @@ namespace MaidHome.Gameplay.Maid
 
         void DoSlap(int sign)
         {
+            if (!MaidInjuryRules.Allows(_agent))
+            {
+                return;
+            }
+
             _lastSlapAt = Time.unscaledTime;
             // yaw 正值是「脸朝画面左转」（绕相机 up 轴），所以往右挥要取负，头才跟着手走；
             // roll 反过来：负值是往右倒，正好也是顺着挥的方向
@@ -1332,6 +1342,11 @@ namespace MaidHome.Gameplay.Maid
 
         void ShowLine(string line)
         {
+            if (!MaidInjuryRules.Allows(_agent))
+            {
+                return;
+            }
+
             MaidChatBubble.Show(_agent, line, _lineSeconds);
         }
 

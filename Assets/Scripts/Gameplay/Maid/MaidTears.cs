@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using MaidHome.Core.Settings;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -23,7 +24,7 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _dropSizeRatio = 0.25f;
         [SerializeField] private float _dropInterval = 0.5f;
         [Tooltip("贴到头网格表面后再往前推的极小距离，防止 z-fighting")]
-        [SerializeField] private float _surfaceOffset = 0.002f;
+        [SerializeField] private float _surfaceOffset = 0.01f;
         [Tooltip("脸部方框在 Head 局部坐标里的边长（模型 1 格 = 16 像素，8 像素头约 0.5）")]
         [SerializeField] private float _faceSize = 0.46f;
         [Tooltip("泪痕所在的正面深度（Head 局部 Z），8 像素头约 0.23")]
@@ -104,6 +105,18 @@ namespace MaidHome.Gameplay.Maid
         {
             if (!_visible)
             {
+                return;
+            }
+
+            if (!GameSettingsStore.Current.TearsEnabled)
+            {
+                Deactivate();
+                return;
+            }
+
+            if (!MaidInjuryRules.Allows(_agent))
+            {
+                Deactivate();
                 return;
             }
 
@@ -194,7 +207,8 @@ namespace MaidHome.Gameplay.Maid
 
         public void AddDamage(float amount)
         {
-            if (!(amount > 0f))
+            if (!GameSettingsStore.Current.TearsEnabled || !MaidInjuryRules.Allows(_agent)
+                || !(amount > 0f))
             {
                 return;
             }
@@ -244,6 +258,11 @@ namespace MaidHome.Gameplay.Maid
 
         void Activate()
         {
+            if (!GameSettingsStore.Current.TearsEnabled || !MaidInjuryRules.Allows(_agent))
+            {
+                return;
+            }
+
             if (_visible)
             {
                 if (_streakRenderer != null)

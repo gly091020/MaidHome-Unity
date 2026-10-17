@@ -250,8 +250,9 @@ namespace MaidHome.Gameplay.Maid
             {
                 _panel.SetLevelInteractable(LevelLight, true);
                 // 中挡、重挡都要扔蛋糕，没接预制体就灰着
-                _panel.SetLevelInteractable(LevelMedium, _cakePrefab != null);
-                _panel.SetLevelInteractable(LevelHeavy, _cakePrefab != null);
+                bool canThrow = _cakePrefab != null && MaidInjuryRules.Allows(_agent);
+                _panel.SetLevelInteractable(LevelMedium, canThrow);
+                _panel.SetLevelInteractable(LevelHeavy, canThrow);
                 SelectDefaultLevel();
                 _panel.Show();
             }
@@ -299,7 +300,7 @@ namespace MaidHome.Gameplay.Maid
         void SelectDefaultLevel()
         {
             int level = _defaultLevel;
-            if (level != LevelLight && _cakePrefab == null)
+            if (level != LevelLight && (_cakePrefab == null || !MaidInjuryRules.Allows(_agent)))
             {
                 level = LevelLight;
             }
@@ -387,6 +388,11 @@ namespace MaidHome.Gameplay.Maid
 
             if (_selectedLevel == LevelMedium || _selectedLevel == LevelHeavy)
             {
+                if (!MaidInjuryRules.Allows(_agent))
+                {
+                    return false;
+                }
+
                 // 中挡 / 重挡：方向由点的地方决定，轨迹交给物理引擎。她正吃着一口也能砸
                 bool heavy = _selectedLevel == LevelHeavy;
                 _lastFeedTime = Time.time;
@@ -429,6 +435,7 @@ namespace MaidHome.Gameplay.Maid
             }
 
             bool heavy = level == LevelHeavy;
+            bool canHurt = MaidInjuryRules.Allows(_agent);
 
             SpawnParticles();
             // 砸中音效：重砸有单独的，没接就退回中挡那个
@@ -441,7 +448,7 @@ namespace MaidHome.Gameplay.Maid
 
             PlayHurtAnimation();
 
-            if (heavy)
+            if (heavy && canHurt)
             {
                 // 重挡多两样：头被砸得扭过去，以及连击计数
                 PlayHeadTwist(cake);
@@ -920,6 +927,11 @@ namespace MaidHome.Gameplay.Maid
 
         void SaySomething(string voiceEvent, string[] lines, bool hurt)
         {
+            if (hurt && !MaidInjuryRules.Allows(_agent))
+            {
+                return;
+            }
+
             if (_agent != null && !string.IsNullOrEmpty(voiceEvent))
             {
                 MaidAudioService.Play(_agent, voiceEvent, false, _soundVolume);
@@ -1452,7 +1464,7 @@ namespace MaidHome.Gameplay.Maid
         /// <summary>面板上换了强度（单选），记下来，等玩家点屏幕时用</summary>
         void OnLevelSelected(int level)
         {
-            if (level != LevelLight && _cakePrefab == null)
+            if (level != LevelLight && (_cakePrefab == null || !MaidInjuryRules.Allows(_agent)))
             {
                 return;
             }

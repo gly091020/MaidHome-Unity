@@ -1,0 +1,4 @@
+这里填写关于内容。
+
+可以在 Unity 编辑器里选中 Assets/Resources/Settings/about.txt 直接编辑；
+设置界面的「关于」按钮会读取这份文本，并在可滚动的面板里显示。

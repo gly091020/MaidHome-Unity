@@ -75,10 +75,28 @@ namespace MaidHome.Core.Input
             get { return UnityEngine.Input.GetKeyDown(KeyCode.Escape); }
         }
 
+        /// <summary>设备有没有加速度计；体感模式用</summary>
+        public static bool SupportsAccelerometer
+        {
+            get { return SystemInfo.supportsAccelerometer; }
+        }
+
+        /// <summary>设备坐标系下的加速度（含重力）；体感模式用</summary>
+        public static Vector3 Acceleration
+        {
+            get { return UnityEngine.Input.acceleration; }
+        }
+
         /// <summary>调试用：F8。同样只在这里读 Input，业务脚本不要自己调 Input。</summary>
         public static bool DebugTogglePressed
         {
             get { return UnityEngine.Input.GetKeyDown(KeyCode.F8); }
+        }
+
+        /// <summary>调试用：F9 打开/关闭设置面板。业务脚本不要自己读 Input。</summary>
+        public static bool SettingsTogglePressed
+        {
+            get { return UnityEngine.Input.GetKeyDown(KeyCode.F9); }
         }
 
         /// <summary>

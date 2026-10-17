@@ -94,6 +94,9 @@ namespace MaidHome.Gameplay.Maid
         readonly List<Component> _paused = new List<Component>();
         readonly List<bool> _pausedWasEnabled = new List<bool>();
         PhysicMaterial _material;
+        bool _sensorForces;
+        Vector3 _sensorGravity;
+        Vector3 _sensorAcceleration;
 
         public MaidRagdollPlan Plan { get; private set; }
         public bool IsActive { get; private set; }
@@ -228,6 +231,7 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            _sensorForces = false;
             for (int i = 0; i < _rigs.Count; i++)
             {
                 Rig rig = _rigs[i];
@@ -246,10 +250,54 @@ namespace MaidHome.Gameplay.Maid
             IsActive = false;
         }
 
+        /// <summary>
+        /// 体感模式：关掉 Rigidbody 自带重力，改由手机传感器给每个物理块施加重力和线性加速度。
+        /// </summary>
+        public void SetSensorForces(bool enabled, Vector3 gravity, Vector3 acceleration)
+        {
+            _sensorForces = enabled;
+            _sensorGravity = gravity;
+            _sensorAcceleration = acceleration;
+            for (int i = 0; i < _rigs.Count; i++)
+            {
+                Rigidbody body = _rigs[i].Body;
+                if (body != null)
+                {
+                    body.useGravity = !enabled;
+                    if (enabled)
+                    {
+                        body.WakeUp();
+                    }
+                }
+            }
+        }
+
+        void FixedUpdate()
+        {
+            if (!IsActive || !_sensorForces)
+            {
+                return;
+            }
+
+            Vector3 force = _sensorGravity + _sensorAcceleration;
+            for (int i = 0; i < _rigs.Count; i++)
+            {
+                Rigidbody body = _rigs[i].Body;
+                if (body == null || body.isKinematic)
+                {
+                    continue;
+                }
+
+                body.WakeUp();
+                body.AddForce(force * body.mass, ForceMode.Force);
+            }
+        }
+
         /// <summary>把刚体/关节/碰撞体全拆掉（不会动姿势；退出前先 Exit）。</summary>
         public void Clear()
         {
             _rigs.Clear();
+            _sensorForces = false;
             // 编辑模式里建过、进 Play 时运行时列表却是空的：按"扫身上所有自制的物理组件"兜底
             Transform[] all = transform.GetComponentsInChildren<Transform>(true);
             for (int i = 0; i < all.Length; i++)

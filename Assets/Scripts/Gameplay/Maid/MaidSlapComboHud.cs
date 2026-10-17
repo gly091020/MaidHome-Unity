@@ -21,6 +21,7 @@ namespace MaidHome.Gameplay.Maid
         const int ParticlesPerSide = 64;
         const float HueCycleSeconds = 2.4f;
         const float ComboHueStep = 0.09f;
+        const string MilestoneLabel = "100连抽";
 
         // 位图字体：assets/moreanimation/font/combo_display.json（256x64，8 列 2 行）
         static readonly string[] GlyphChars = { "01234567", "89SLAP连抽" };
@@ -157,8 +158,7 @@ namespace MaidHome.Gameplay.Maid
             float speedSize;
             ComboLayout(now, out top, out size, out speedSize);
 
-            // 「N连抽」别压在连击数（和下面的速度）上：至少放到连击那一块底下
-            DrawMilestone(now, top + size * 1.05f + speedSize * 1.9f);
+            DrawMilestone(now);
 
             int count = Count;
             if (count <= 0)
@@ -215,7 +215,7 @@ namespace MaidHome.Gameplay.Maid
             return _hitTimes.Count / Mathf.Max(0.2f, RateWindow);
         }
 
-        void DrawMilestone(float now, float minTop)
+        void DrawMilestone(float now)
         {
             if (_milestone <= 0)
             {
@@ -250,8 +250,9 @@ namespace MaidHome.Gameplay.Maid
             float fade = Mathf.Min(1f, (TextSeconds - age) / 0.55f);
             int alpha = Mathf.Max(4, (int)(fade * 255f));
             float height = Screen.width * MilestoneSizeRatio * pop;
-            float top = Mathf.Max(Mathf.Max(42f, Screen.height * MilestoneTopRatio), minTop);
-            DrawMilestoneText(_milestone + "连抽", Screen.width * 0.5f, top, height, alpha, now);
+            // 百次提示固定文本、固定位置，不随连击数变化
+            float top = Mathf.Max(42f, Screen.height * MilestoneTopRatio);
+            DrawMilestoneText(MilestoneLabel, Screen.width * 0.5f, top, height, alpha, now);
         }
 
         /// <summary>模组那套：两侧贴边的 8 条彩虹光带 + 每侧 64 个彩色粒子往里飞</summary>

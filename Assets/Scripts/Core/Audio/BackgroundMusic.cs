@@ -1,4 +1,5 @@
 using System.Collections;
+using MaidHome.Core.Settings;
 using UnityEngine;
 
 namespace MaidHome.Core.Audio
@@ -87,6 +88,7 @@ namespace MaidHome.Core.Audio
 
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            _volume = Mathf.Clamp01(GameSettingsStore.Current.BackgroundVolume / 100f);
             ApplyVolume();
         }
 

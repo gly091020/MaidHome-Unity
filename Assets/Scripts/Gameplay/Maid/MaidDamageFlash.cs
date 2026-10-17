@@ -28,6 +28,12 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            MaidAgent agent = target.GetComponent<MaidAgent>();
+            if (agent != null && !MaidInjuryRules.Allows(agent))
+            {
+                return;
+            }
+
             MaidDamageFlash flash = target.GetComponent<MaidDamageFlash>();
             if (flash == null)
             {
