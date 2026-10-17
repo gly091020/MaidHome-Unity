@@ -28,6 +28,8 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private int _springDelayFrames = 3;
         [Tooltip("射线刚好落在关节缝里时，允许在屏幕这个像素范围内兜底抓最近的一块")]
         [SerializeField] private float _pickFallbackPixels = 24f;
+        [Tooltip("兜底范围按屏幕高度再给一份，适配高 DPI 手机：0.04 ≈ 屏幕高度的 4%")]
+        [SerializeField] private float _pickFallbackScreenRatio = 0.04f;
         [SerializeField] private float _rayDistance = 500f;
         [SerializeField] private LayerMask _dragMask = ~0;
 
@@ -72,7 +74,7 @@ namespace MaidHome.Gameplay.Maid
         readonly List<Grab> _grabs = new List<Grab>();
         readonly List<PointerInput.Pointer> _pointers = new List<PointerInput.Pointer>();
         readonly List<Collider> _pickColliders = new List<Collider>();
-        readonly RaycastHit[] _hits = new RaycastHit[64];
+        readonly RaycastHit[] _hits = new RaycastHit[128];
 
         MaidAgent _agent;
         MaidRagdoll _ragdoll;
@@ -617,7 +619,6 @@ namespace MaidHome.Gameplay.Maid
 
             int nearest = -1;
             float nearestDistance = float.MaxValue;
-            float nearestExternal = float.MaxValue;
             Rigidbody nearestBody = null;
             for (int i = 0; i < count; i++)
             {
@@ -629,12 +630,6 @@ namespace MaidHome.Gameplay.Maid
 
                 if (!collider.transform.IsChildOf(_agent.transform))
                 {
-                    // 墙体 / 地板这类外部碰撞体挡住时不能隔墙抓
-                    if (_hits[i].distance < nearestExternal)
-                    {
-                        nearestExternal = _hits[i].distance;
-                    }
-
                     continue;
                 }
 
@@ -665,16 +660,10 @@ namespace MaidHome.Gameplay.Maid
                 }
             }
 
-            if (nearest >= 0 && nearestBody != null && nearestDistance <= nearestExternal)
+            if (nearest >= 0 && nearestBody != null)
             {
                 point = _hits[nearest].point;
                 return nearestBody;
-            }
-
-            // 最近的是外部碰撞体时不能隔墙抓；只是点到关节缝、什么都没打到才做屏幕兜底。
-            if (nearestExternal < float.MaxValue)
-            {
-                return null;
             }
 
             return PickNearScreen(camera, screenPosition, out point);
@@ -716,7 +705,8 @@ namespace MaidHome.Gameplay.Maid
         Rigidbody PickNearScreen(Camera camera, Vector2 screenPosition, out Vector3 point)
         {
             point = Vector3.zero;
-            float bestOutside = Mathf.Max(0f, _pickFallbackPixels);
+            float bestOutside = Mathf.Max(0f, _pickFallbackPixels,
+                Screen.height * Mathf.Max(0f, _pickFallbackScreenRatio));
             float bestDepth = float.MaxValue;
             Rigidbody best = null;
             for (int i = 0; i < _pickColliders.Count; i++)

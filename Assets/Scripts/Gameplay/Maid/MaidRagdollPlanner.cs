@@ -37,6 +37,8 @@ namespace MaidHome.Gameplay.Maid
             "head", "body", "skirt", "tail", "armLeft", "armRight", "legLeft", "legRight",
         };
 
+        const int TailGroup = 3;
+
         /// <summary>
         /// 哪些部位要把子树里的网格合成一块。只有头 / 身体 / 裙子合并：
         /// 手、脚、尾巴这几条长链要一段一段各自成块（手肘、膝盖、尾巴各节都能弯），
@@ -65,8 +67,8 @@ namespace MaidHome.Gameplay.Maid
                 return plan;
             }
 
-            List<Transform> roots = PickPartRoots(skeleton, out List<bool> merges);
-            BuildParts(skeleton, roots, merges, plan);
+            List<Transform> roots = PickPartRoots(skeleton, out List<bool> merges, out List<string> labels);
+            BuildParts(skeleton, roots, merges, labels, plan);
             LinkParts(skeleton, plan);
             return plan;
         }
@@ -74,14 +76,35 @@ namespace MaidHome.Gameplay.Maid
         // ------------------------------------------------------------ 认部位
 
         /// <summary>挑出识别到的部位根骨骼；merges 与之一一对应，标记这个部位要不要合并子树。</summary>
-        static List<Transform> PickPartRoots(MaidRagdollSkeleton skeleton, out List<bool> merges)
+        static List<Transform> PickPartRoots(MaidRagdollSkeleton skeleton, out List<bool> merges,
+            out List<string> labels)
         {
             List<Transform> picked = new List<Transform>();
             merges = new List<bool>();
+            labels = new List<string>();
             Transform body = null;
 
             for (int group = 0; group < PartNames.Length; group++)
             {
+                // 尾巴不是"整个模型只有一条"：一条尾巴一条链，每条链的根都要留下。
+                // 只选一条的话，其余尾巴会往上找到 body，被并进身体里。
+                if (group == TailGroup)
+                {
+                    List<Transform> tails = FindTailRoots(skeleton);
+                    for (int t = 0; t < tails.Count; t++)
+                    {
+                        Transform tail = tails[t];
+                        if (!picked.Contains(tail) && !UnderOtherPart(skeleton, picked, body, tail))
+                        {
+                            picked.Add(tail);
+                            merges.Add(false);
+                            labels.Add("tail");
+                        }
+                    }
+
+                    continue;
+                }
+
                 Transform best = null;
                 int bestFuzzy = 0;
                 int bestAlias = 0;
@@ -129,6 +152,7 @@ namespace MaidHome.Gameplay.Maid
 
                 picked.Add(best);
                 merges.Add(PartMerges[group]);
+                labels.Add(PartLabels[group]);
                 if (PartLabels[group] == "body")
                 {
                     body = best;
@@ -136,6 +160,59 @@ namespace MaidHome.Gameplay.Maid
             }
 
             return picked;
+        }
+
+        /// <summary>
+        /// 找出每条尾巴链的根：名字命中 tail，有几何，并且祖先里没有另一个也命中 tail 的有几何骨骼。
+        /// 这样 Tail2/Tail3... 不会被重复当根，MTail1 这种空骨架也不会抢位置。
+        /// </summary>
+        static List<Transform> FindTailRoots(MaidRagdollSkeleton skeleton)
+        {
+            List<Transform> roots = new List<Transform>();
+            for (int i = 0; i < skeleton.Bones.Count; i++)
+            {
+                Transform bone = skeleton.Bones[i];
+                if (!skeleton.HasGeometry(bone) || MaidRagdollSkeleton.IsSkipped(bone.name)
+                    || !MatchTail(skeleton, bone))
+                {
+                    continue;
+                }
+
+                bool parentIsTail = false;
+                Transform cursor = bone.parent;
+                while (cursor != null)
+                {
+                    if (skeleton.HasGeometry(cursor) && MatchTail(skeleton, cursor))
+                    {
+                        parentIsTail = true;
+                        break;
+                    }
+
+                    cursor = cursor.parent;
+                }
+
+                if (!parentIsTail)
+                {
+                    roots.Add(bone);
+                }
+            }
+
+            return roots;
+        }
+
+        static bool MatchTail(MaidRagdollSkeleton skeleton, Transform bone)
+        {
+            string normalized = MaidRagdollSkeleton.Normalize(bone.name);
+            // "detail" / "retail" 里也含 tail，别把普通装饰误认成尾巴
+            if (normalized.StartsWith("detail", StringComparison.Ordinal)
+                || normalized.StartsWith("retail", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int fuzzy;
+            int alias;
+            return MatchPreference(normalized, PartNames[TailGroup], out fuzzy, out alias);
         }
 
         static bool UnderOtherPart(MaidRagdollSkeleton skeleton, List<Transform> picked, Transform body,
@@ -203,7 +280,7 @@ namespace MaidHome.Gameplay.Maid
         // ------------------------------------------------------------ 分块
 
         static void BuildParts(MaidRagdollSkeleton skeleton, List<Transform> roots, List<bool> merges,
-            MaidRagdollPlan plan)
+            List<string> labels, MaidRagdollPlan plan)
         {
             // 每块网格归到"最近的部位根祖先"（含自己）：
             // * 这个祖先是"合并型"部位（头/身体/裙子）→ 并进这块；
@@ -252,8 +329,8 @@ namespace MaidHome.Gameplay.Maid
                 part.BoneName = owner.name;
                 int rootIndex = roots.IndexOf(owner);
                 bool recognized = rootIndex >= 0;
-                part.Label = recognized ? PartLabels[rootIndex] : owner.name;
-                part.Matched = recognized ? PartLabels[rootIndex] : "";
+                part.Label = recognized ? labels[rootIndex] : owner.name;
+                part.Matched = recognized ? labels[rootIndex] : "";
                 part.MeshCount = 0;
 
                 Bounds bounds = new Bounds();
