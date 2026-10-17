@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2c5e8a1d4f7b43e6c9a0d2b5e8f31647, type: 3}
+  m_Name: MaidMaskSettings
+  m_EditorClassIdentifier: 
+  _style:
+    Prefab: {fileID: 4057942731848591229, guid: d1613f8ab856bb14fab12e5af2fb3cc5, type: 3}
+    Bones: []
+    SizeRatio: 0.6
+    ScaleMultiplier: 1
+    Offset: {x: 0, y: 0, z: 0}
+    TextOffset: {x: 0, y: 0, z: 0}
+    TextScale: 1
+    FacingFix: {x: 0, y: 180, z: 0}
+    SimpleBedrockCorrection: 0
+    SimpleBedrockOffset: {x: 0, y: 0, z: 0}
+    SimpleBedrockScale: 1
+  _maskOrthographicSize: 0.1
+  _maskFocusPitchDegrees: -1

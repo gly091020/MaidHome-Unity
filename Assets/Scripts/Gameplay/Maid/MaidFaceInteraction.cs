@@ -42,124 +42,127 @@ namespace MaidHome.Gameplay.Maid
         const float ReversalDistance = 0.012f;
         const int MaxStepsPerFrame = 8;
 
+        [Header("配置（接了就覆盖下面的默认参数）")]
+        [SerializeField] private MaidFaceSettings _settings;
+
         [Header("拖耳朵")]
         [Tooltip("横向拖动时耳朵在画面里摆多少度（上限），方向反了改成负数")]
-        [SerializeField] private float _earRollDegrees = -55f;
+        private float _earRollDegrees = -55f;
         [Tooltip("纵向拖动时耳朵前后摆多少度（上限）")]
-        [SerializeField] private float _earPitchDegrees = -30f;
+        private float _earPitchDegrees = -30f;
         [Tooltip("绕竖直轴拧多少度（上限），一般用不上")]
-        [SerializeField] private float _earTwistDegrees = 0f;
+        private float _earTwistDegrees = 0f;
         [Tooltip("拖多少屏幕高度算「拖到底」，越大越迟钝（tanh 软化）")]
-        [SerializeField] private float _earDragResponse = 0.12f;
+        private float _earDragResponse = 0.12f;
         [Tooltip("拖出这么多屏幕高度才开始拉长")]
-        [SerializeField] private float _earStretchStart = 0.05f;
+        private float _earStretchStart = 0.05f;
         [Tooltip("拖到这么多屏幕高度就拉满")]
-        [SerializeField] private float _earStretchFull = 0.26f;
+        private float _earStretchFull = 0.26f;
         [Tooltip("耳朵最多拉长百分之多少")]
-        [SerializeField] private float _earStretchMax = 0.35f;
+        private float _earStretchMax = 0.35f;
         [Tooltip("拉长超过这个比例就算拉太狠，她会喊疼")]
-        [SerializeField] private float _earDamageStretch = 0.2f;
+        private float _earDamageStretch = 0.2f;
 
         [Header("拽脸")]
         [Tooltip("在空白处起手拖动，超过屏幕高度的这个比例才算「拖脸」（起手在脸上的手势归扇脸/戳脸，不拖脸）；阈值照抄模组 DRAG_THRESHOLD = 0.012")]
-        [SerializeField] private float _faceDragStartRatio = 0.012f;
+        private float _faceDragStartRatio = 0.012f;
         [Tooltip("拖到屏幕边缘时脸最多往左右各转多少度")]
-        [SerializeField] private float _faceDragMaxYaw = 105f;
+        private float _faceDragMaxYaw = 105f;
         [Tooltip("拖到屏幕边缘时头最多往上/往下转多少度")]
-        [SerializeField] private float _faceDragMaxPitch = 100f;
+        private float _faceDragMaxPitch = 100f;
         [Tooltip("超过这个角度就算拽太狠，她会喊疼（模组 FACE_DAMAGE_ANGLE = 65°）")]
-        [SerializeField] private float _faceDragDamageAngle = 65f;
+        private float _faceDragDamageAngle = 65f;
         [Tooltip("松手后回正速度，度/秒")]
-        [SerializeField] private float _faceDragReturnSpeed = 300f;
+        private float _faceDragReturnSpeed = 300f;
 
         [Header("扇耳光")]
         [Tooltip("一次横挥至少要划过多少屏幕高度")]
-        [SerializeField] private float _slapMinDistance = 0.07f;
-        [SerializeField] private float _slapMaxSeconds = 0.4f;
+        private float _slapMinDistance = 0.07f;
+        private float _slapMaxSeconds = 0.4f;
         [Tooltip("横挥速度下限，单位是屏幕高度/秒")]
-        [SerializeField] private float _slapMinSpeed = 0.2f;
+        private float _slapMinSpeed = 0.2f;
         [Tooltip("横向位移要大于纵向的多少倍才算「挥」，竖着划脸不算")]
-        [SerializeField] private float _slapHorizontalRatio = 2f;
+        private float _slapHorizontalRatio = 2f;
         [Tooltip("两巴掌之间至少隔这么久")]
-        [SerializeField] private float _slapRepeatDelay = 0.1f;
+        private float _slapRepeatDelay = 0.1f;
         [Tooltip("连着挥的话，多久没再扇到就断连击")]
-        [SerializeField] private float _comboTimeoutSeconds = 2.5f;
+        private float _comboTimeoutSeconds = 2.5f;
         [Tooltip("连击到多少的整数倍时放彩蛋（模组是 100）")]
-        [SerializeField] private int _comboMilestoneStep = 100;
-        [SerializeField] private float _slapYawDegrees = 38f;
-        [SerializeField] private float _slapRollDegrees = 10f;
+        private int _comboMilestoneStep = 100;
+        private float _slapYawDegrees = 38f;
+        private float _slapRollDegrees = 10f;
         [Tooltip("slap.ogg 的放大倍率（原文件录得小）")]
-        [SerializeField] private float _slapVolume = 6f;
+        private float _slapVolume = 6f;
         [Tooltip("100 连抽的彩蛋音，留空就用现场合成的上行琶音")]
-        [SerializeField] private AudioClip _milestoneClip;
+        private AudioClip _milestoneClip;
 
         [Header("戳脸")]
-        [SerializeField] private float _eyeYawDegrees = 24f;
-        [SerializeField] private float _eyePitchDegrees = 12f;
-        [SerializeField] private float _cheekYawDegrees = 12f;
-        [SerializeField] private float _cheekPitchDegrees = 5f;
+        private float _eyeYawDegrees = 24f;
+        private float _eyePitchDegrees = 12f;
+        private float _cheekYawDegrees = 12f;
+        private float _cheekPitchDegrees = 5f;
         [Tooltip("按下到抬起不超过这么久才算「戳」")]
-        [SerializeField] private float _tapMaxSeconds = 0.3f;
+        private float _tapMaxSeconds = 0.3f;
         [Tooltip("按下到抬起位移不超过这么多像素才算「戳」")]
-        [SerializeField] private float _tapSlopPixels = 24f;
+        private float _tapSlopPixels = 24f;
         [Tooltip("两次戳之间至少隔这么久，眼睛和脸颊**共用**这一个冷却；调小到 0 就是不限")]
-        [SerializeField] private float _pokeCooldownSeconds = 0.2f;
+        private float _pokeCooldownSeconds = 0.2f;
         [Tooltip("戳脸那套反应（闪红 + 台词 + 语音 + 受伤动画）的冷却，0 = 每次戳都演；和拖脸掰疼那句是分开的")]
-        [SerializeField] private float _pokeReactionCooldownSeconds = 0f;
-        [SerializeField] private float _hitPaddingPixels = 6f;
+        private float _pokeReactionCooldownSeconds = 0f;
+        private float _hitPaddingPixels = 6f;
         [Tooltip("耳朵判定区收多少：1 = 耳朵网格的投影包围盒，越小越难点到耳朵（脸的区域就更大）")]
-        [SerializeField] private float _earZoneScale = 0.75f;
+        private float _earZoneScale = 0.75f;
 
         [Header("方块模型的眼睛位置")]
         [Tooltip("眼睛在正脸局部 UV 里的位置（0 基像素）；方块模型没有眼睛骨骼，只能用这个约定推锚点。默认左眼 (1,5) 大小 2×2，就是 1 基的 (2,6)-(3,7)")]
-        [SerializeField] private Vector2 _faceEyeUvMin = new Vector2(1f, 5f);
+        private Vector2 _faceEyeUvMin = new Vector2(1f, 5f);
         [Tooltip("眼睛大小，默认 2×2")]
-        [SerializeField] private Vector2 _faceEyeUvSize = new Vector2(2f, 2f);
+        private Vector2 _faceEyeUvSize = new Vector2(2f, 2f);
         [Tooltip("正脸贴图的像素边长，这些方块模型都是 8")]
-        [SerializeField] private float _facePixels = 8f;
+        private float _facePixels = 8f;
 
         [Header("转身")]
         [Tooltip("进摸脸模式时她转过来面对镜头要多久")]
-        [SerializeField] private float _turnSeconds = 0.35f;
+        private float _turnSeconds = 0.35f;
 
         [Header("音量")]
         [Tooltip("女仆受伤语音的放大倍率")]
-        [SerializeField] private float _voiceVolume = 6f;
+        private float _voiceVolume = 6f;
 
         [Header("闪红")]
-        [SerializeField] private Color _flashColor = new Color(1f, 0f, 0f, 0.5f);
-        [SerializeField] private float _flashSeconds = 0.5f;
+        private Color _flashColor = new Color(1f, 0f, 0f, 0.5f);
+        private float _flashSeconds = 0.5f;
 
         [Header("台词")]
-        [SerializeField] private float _lineSeconds = 1f;
-        [SerializeField] private float _complainCooldownSeconds = 1f;
-        [SerializeField] private float _slapLineCooldownSeconds = 0.6f;
+        private float _lineSeconds = 1f;
+        private float _complainCooldownSeconds = 1f;
+        private float _slapLineCooldownSeconds = 0.6f;
 
         [Header("调试")]
         [Tooltip("把触发范围画在屏幕上（红=眼睛 黄=脸颊 青=耳朵 蓝=整张脸），运行时按 F8 也能开关")]
-        [SerializeField] private bool _showZones;
+        private bool _showZones;
 
         [Header("面具 / 纯扇脸")]
         [Tooltip("纯扇脸：只认横挥的耳光，戳脸 / 拖脸 / 拽耳朵全部关掉。"
             + "Inspector 里设默认值；运行时按钮直接接 ToggleSlapOnly() 或 SetSlapOnly(bool)")]
-        [SerializeField] private bool _slapOnly;
+        private bool _slapOnly;
         [Tooltip("戴面具时不判眼睛（眼睛区落到脸区，点一下不会有反应；横挥照样扇）")]
-        [SerializeField] private bool _maskBlocksEyes = true;
+        private bool _maskBlocksEyes = true;
         bool _masked;
 
         [Header("连击显示")]
         [Tooltip("「连击 ×N」字号占屏幕宽度的比例")]
-        [SerializeField] private float _comboSizeRatio = 0.085f;
+        private float _comboSizeRatio = 0.085f;
         [Tooltip("「连击 ×N」距屏幕顶部占屏幕高度的比例（越大越往下）")]
-        [SerializeField] private float _comboTopRatio = 0.035f;
+        private float _comboTopRatio = 0.035f;
         [Tooltip("「N连抽」字高占屏幕宽度的比例")]
-        [SerializeField] private float _milestoneSizeRatio = 0.11f;
+        private float _milestoneSizeRatio = 0.11f;
         [Tooltip("「N连抽」距屏幕顶部占屏幕高度的比例")]
-        [SerializeField] private float _milestoneTopRatio = 0.12f;
+        private float _milestoneTopRatio = 0.12f;
         [Tooltip("100 连彩蛋粒子的尺寸倍率（模组原始尺寸 = 1，搬到手机上要放大）")]
-        [SerializeField] private float _comboParticleScale = 2f;
+        private float _comboParticleScale = 2f;
         [Tooltip("连击数在 _comboSizeRatio 之上再放大多少（1.45 = 比原来的大一圈）")]
-        [SerializeField] private float _comboScale = 1.45f;
+        private float _comboScale = 1.45f;
 
         // 台词照抄 moreanimation 的 zh_cn
         static readonly string[] EarLines =
@@ -296,10 +299,15 @@ namespace MaidHome.Gameplay.Maid
 
         static Texture2D _ellipse;
 
+        void Awake()
+        {
+            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidFaceInteraction");
+        }
+
         /// <summary>这个女仆能不能摸脸（有头就行），用来决定面板按钮能不能点</summary>
         public bool Supports(MaidAgent agent)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }
@@ -371,7 +379,7 @@ namespace MaidHome.Gameplay.Maid
 
         public bool Begin(MaidAgent agent, AudioClip slapClip)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }

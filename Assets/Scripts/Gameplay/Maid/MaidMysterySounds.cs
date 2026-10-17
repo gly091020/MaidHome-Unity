@@ -44,7 +44,7 @@ namespace MaidHome.Gameplay.Maid
             }
 
             _loaded = true;
-            _config = Resources.Load<MaidMysterySoundConfig>("MaidMysterySoundConfig");
+            _config = Resources.Load<MaidMysterySoundConfig>("Settings/MaidMysterySoundConfig");
             if (_config != null)
             {
                 _hurt = _config.Hurt;

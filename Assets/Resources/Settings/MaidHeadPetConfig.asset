@@ -1,0 +1,88 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d2a4c1e9b8f4a6d8c3e5f0a1b7d9c22, type: 3}
+  m_Name: MaidHeadPetConfig
+  m_EditorClassIdentifier: 
+  _playMaidPetAnimation: 1
+  _petReactionClip: pet_reaction
+  _petHoldClip: pet_reaction_hold
+  _headStartWidthRatio: 0.95
+  _headStartDepthRatio: 0.35
+  _headStartAboveRatio: 0.2
+  _rubRollDegrees: 8
+  _rubYawDegrees: 5
+  _rubSmooth: 12
+  _rubStep: 0.06
+  _rubVolume: 1
+  _rubClip: {fileID: 0}
+  _rubIgniteSpeed: 2.5
+  _rubHeatRate: 1.2
+  _rubHeatDecay: 0.8
+  _firePrefab: {fileID: 3654678169611050807, guid: 3f6600885c81cd4408e26a237031138d, type: 3}
+  _fireScale: 0.45
+  _fireCameraOffset: {x: 0, y: 0, z: 0}
+  _burnColor: {r: 0.08, g: 0.05, b: 0.04, a: 0.78431374}
+  _fireSeconds: 5
+  _fireLineSeconds: 4
+  _fireEndClip: {fileID: 8300000, guid: eff8c4014c3eca34fb7c86967cc6f911, type: 3}
+  _fireEndVolume: 1
+  _burnReactionClip: '!??!'
+  _wuyuClip: wuyu
+  _wuyuWeight: 1
+  _wuyuFadeSeconds: 0.4
+  _fireLines:
+  - "\u2026\u2026"
+  - "\u4E3B\u4EBA\uFF0C\u4F60\u8BA4\u771F\u7684\u5417\u3002"
+  - "\u5934\u53D1\uFF0C\u7740\u706B\u4E86\u3002"
+  - "\u2026\u2026\u6211\u73B0\u5728\u8BE5\u8BF4\u4EC0\u4E48\u3002"
+  - "\u4F60\u6413\u5F97\u633A\u5F00\u5FC3\u7684\u3002"
+  - "\u7B97\u4E86\uFF0C\u70E7\u5427\u3002"
+  _pressRange: 0.16
+  _pressStartOffset: 0
+  _pressSquash: 0.35
+  _pressBulge: 0.18
+  _pressSmooth: 14
+  _pressSoundAt: 0.18
+  _pressVolume: 1
+  _pressClip: {fileID: 8300000, guid: 9d7cd3d588af9c04d9e54b274165e482, type: 3}
+  _pressHurtSeconds: 3
+  _pressHurtThreshold: 0.2
+  _dizzinessClip: dizziness
+  _pressTooLongLines:
+  - "\u2026\u2026\u88AB\u6309\u50BB\u4E86\u3002"
+  - "\u997F\u554A\u2014\u2014"
+  - "\u6655\u2026\u2026\u6211\u662F\u8C01\uFF0C\u6211\u5728\u54EA\u3002"
+  - "\u518D\u6309\u4E0B\u53BB\u8111\u5B50\u8981\u6241\u4E86\u3002"
+  - "\u2026\u2026\u521A\u624D\u53D1\u751F\u4EC0\u4E48\u4E86\u3002"
+  _pressVoiceVolume: 6
+  _pressLineSeconds: 3
+  _pressFlashColor: {r: 1, g: 0, b: 0, a: 0.5}
+  _pressFlashSeconds: 0.5
+  _starCount: 10
+  _starRadius: 0.5
+  _starSize: 0.1
+  _starHeight: 0.3
+  _starSpeed: 3
+  _rubLines:
+  - "\u5514\u2026\u2026"
+  - "\u597D\u8212\u670D\u2026\u2026"
+  - "\u518D\u6478\u6478\u2026\u2026"
+  - "\u55EF\u2026\u2026"
+  - "\u2026\u2026\u8FD8\u884C\u3002"
+  _pressLines:
+  - "\u5514\uFF01"
+  - "\u8F7B\u4E00\u70B9\u2026\u2026"
+  - "\u522B\u6309\u90A3\u4E48\u7528\u529B\u2026\u2026"
+  - "\u5934\u8981\u6241\u4E86\u2026\u2026"
+  - "\u2026\u2026\u522B\u6309\u4E86\u3002"
+  _normalLineCooldownSeconds: 2.5
+  _normalLineSeconds: 2

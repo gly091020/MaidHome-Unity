@@ -16,56 +16,59 @@ namespace MaidHome.Gameplay.Maid
     {
         public event Action Ended;
 
+        [Header("配置（接了就覆盖下面的默认参数）")]
+        [SerializeField] private MaidBodySettings _settings;
+
         [Header("拖拽手感")]
         [Tooltip("SpringJoint 的弹簧强度。越大跟手越硬")]
-        [SerializeField] private float _spring = 1500f;
+        private float _spring = 1500f;
         [Tooltip("SpringJoint 的阻尼。越大越不容易来回弹")]
-        [SerializeField] private float _damper = 100f;
+        private float _damper = 100f;
         [Tooltip("弹簧求解精度，越小越精确但越费性能")]
-        [SerializeField] private float _tolerance = 0.025f;
+        private float _tolerance = 0.025f;
         [Tooltip("创建 SpringJoint 后延迟几帧再启用，先让抓取点和物理位置对齐")]
-        [SerializeField] private int _springDelayFrames = 3;
+        private int _springDelayFrames = 3;
         [Tooltip("射线刚好落在关节缝里时，允许在屏幕这个像素范围内兜底抓最近的一块")]
-        [SerializeField] private float _pickFallbackPixels = 24f;
+        private float _pickFallbackPixels = 24f;
         [Tooltip("兜底范围按屏幕高度再给一份，适配高 DPI 手机：0.04 ≈ 屏幕高度的 4%")]
-        [SerializeField] private float _pickFallbackScreenRatio = 0.04f;
-        [SerializeField] private float _rayDistance = 500f;
-        [SerializeField] private LayerMask _dragMask = ~0;
+        private float _pickFallbackScreenRatio = 0.04f;
+        private float _rayDistance = 500f;
+        private LayerMask _dragMask = ~0;
 
         [Header("布娃娃")]
         [Tooltip("玩全身时两两取消自碰撞，头发 / 手脚 / 裙子才不会互相顶")]
-        [SerializeField] private bool _ignoreAllSelfCollision = true;
+        private bool _ignoreAllSelfCollision = true;
         [Tooltip("关掉关节角度限制（只剩位置约束），摆起来最软。默认关闭，也就是保留 10°/15° 限制")]
-        [SerializeField] private bool _disableAngleLimits;
+        private bool _disableAngleLimits;
 
         [Header("体感模式")]
         [Tooltip("传感器重力大小（米/秒²）")]
-        [SerializeField] private float _sensorGravity = 9.81f;
+        private float _sensorGravity = 9.81f;
         [Tooltip("晃动产生的线性加速度倍率")]
-        [SerializeField] private float _sensorAccelerationScale = 4f;
+        private float _sensorAccelerationScale = 4f;
         [Tooltip("加速度变化速度（jerk）的额外倍率，快速甩手机时更明显")]
-        [SerializeField] private float _sensorJerkScale = 0.12f;
+        private float _sensorJerkScale = 0.12f;
         [Tooltip("重力方向低通滤波速度；越大越跟手，越小越稳")]
-        [SerializeField] private float _sensorSmoothing = 6f;
+        private float _sensorSmoothing = 6f;
         [Tooltip("小于这个加速度就当没动，避免静止时抖动")]
-        [SerializeField] private float _sensorDeadzone = 0.01f;
+        private float _sensorDeadzone = 0.01f;
         [Tooltip("屏幕盒的深度 / 屏幕高度。0.7 表示向镜头前后各留 35% 屏高")]
-        [SerializeField] private float _motionDepthRatio = 0.7f;
-        [SerializeField] private float _motionWallThickness = 0.08f;
+        private float _motionDepthRatio = 0.7f;
+        private float _motionWallThickness = 0.08f;
 
         [Header("碰撞反馈")]
         [Tooltip("布娃娃撞到东西时，冲击速度超过这个值就闪红（米/秒）")]
-        [SerializeField] private float _impactFlashSpeed = 4f;
+        private float _impactFlashSpeed = 4f;
         [Tooltip("两次闪红之间至少隔多久")]
-        [SerializeField] private float _impactFlashCooldown = 0.6f;
+        private float _impactFlashCooldown = 0.6f;
         [Tooltip("连续碰撞里，间隔超过这个时间才再累加一次受伤动画")]
-        [SerializeField] private float _hurtRestartCooldown = 0.15f;
+        private float _hurtRestartCooldown = 0.15f;
         [Tooltip("刚进布娃娃后忽略碰撞的时间，避免她倒下去砸到地板也闪红")]
-        [SerializeField] private float _impactWarmupSeconds = 0.4f;
-        [SerializeField] private Color _impactFlashColor = new Color(1f, 0f, 0f, 0.5f);
-        [SerializeField] private float _impactFlashSeconds = 0.5f;
+        private float _impactWarmupSeconds = 0.4f;
+        private Color _impactFlashColor = new Color(1f, 0f, 0f, 0.5f);
+        private float _impactFlashSeconds = 0.5f;
         [Tooltip("碰撞受伤语音的音量倍率")]
-        [SerializeField] private float _impactVoiceVolume = 6f;
+        private float _impactVoiceVolume = 6f;
         public bool IsActive { get; private set; }
 
         sealed class Grab
@@ -106,10 +109,15 @@ namespace MaidHome.Gameplay.Maid
         float _savedNear;
         float _savedFar;
 
+        void Awake()
+        {
+            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidBodyInteraction");
+        }
+
         /// <summary>这个女仆能不能玩全身。模型里至少要能认出物理块</summary>
         public bool Supports(MaidAgent agent)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }
@@ -120,7 +128,7 @@ namespace MaidHome.Gameplay.Maid
 
         public bool Begin(MaidAgent agent)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }

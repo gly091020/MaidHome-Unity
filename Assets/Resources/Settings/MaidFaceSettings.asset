@@ -1,0 +1,67 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d1e8b2a6c9f43d7a0b5e3c1f7d92854, type: 3}
+  m_Name: MaidFaceSettings
+  m_EditorClassIdentifier: 
+  _earRollDegrees: -55
+  _earPitchDegrees: -30
+  _earTwistDegrees: 0
+  _earDragResponse: 0.12
+  _earStretchStart: 0.05
+  _earStretchFull: 0.26
+  _earStretchMax: 0.35
+  _earDamageStretch: 0.2
+  _faceDragStartRatio: 0.012
+  _faceDragMaxYaw: 105
+  _faceDragMaxPitch: 100
+  _faceDragDamageAngle: 65
+  _faceDragReturnSpeed: 300
+  _slapMinDistance: 0.07
+  _slapMaxSeconds: 0.3
+  _slapMinSpeed: 0.3
+  _slapHorizontalRatio: 2
+  _slapRepeatDelay: 0.1
+  _comboTimeoutSeconds: 2.5
+  _comboMilestoneStep: 100
+  _slapYawDegrees: 38
+  _slapRollDegrees: 10
+  _slapVolume: 6
+  _milestoneClip: {fileID: 8300000, guid: 501290d06e653ee4f9085c066e0b9689, type: 3}
+  _eyeYawDegrees: 24
+  _eyePitchDegrees: 12
+  _cheekYawDegrees: 12
+  _cheekPitchDegrees: 5
+  _tapMaxSeconds: 0.3
+  _tapSlopPixels: 24
+  _pokeCooldownSeconds: 0
+  _pokeReactionCooldownSeconds: 0
+  _hitPaddingPixels: 6
+  _earZoneScale: 0.75
+  _faceEyeUvMin: {x: 0, y: 4}
+  _faceEyeUvSize: {x: 4, y: 4}
+  _facePixels: 8
+  _turnSeconds: 0.35
+  _voiceVolume: 6
+  _flashColor: {r: 1, g: 0, b: 0, a: 0.5}
+  _flashSeconds: 0.5
+  _lineSeconds: 1
+  _complainCooldownSeconds: 0.5
+  _slapLineCooldownSeconds: 0.5
+  _showZones: 0
+  _slapOnly: 0
+  _maskBlocksEyes: 1
+  _comboSizeRatio: 0.085
+  _comboTopRatio: 0.035
+  _milestoneSizeRatio: 0.11
+  _milestoneTopRatio: 0.12
+  _comboParticleScale: 2
+  _comboScale: 1.45

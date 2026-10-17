@@ -31,54 +31,57 @@ namespace MaidHome.Gameplay.Maid
 
         public event Action Ended;
 
+        [Header("配置（接了就覆盖下面的默认参数）")]
+        [SerializeField] private MaidFeedSettings _settings;
+
         [Header("吃东西")]
         [Tooltip("吃东西动画名，TLM 的动画表里叫 use_mainhand:eat；模型没这条就只出声和粒子")]
-        [SerializeField] private string _eatClip = "use_mainhand:eat";
+        private string _eatClip = "use_mainhand:eat";
         [Tooltip("进喂蛋糕模式摆的祈求动作（TLM 的 beg：抬手求喂）。只有 geo 模型有动画表，方块模型自动跳过；留空就不摆")]
-        [SerializeField] private string _begClip = "beg";
+        private string _begClip = "beg";
         [Tooltip("祈求 / 被砸 / 吃东西这几段动画互相切换时的混合时间（秒）")]
-        [SerializeField] private float _clipFadeSeconds = 0.12f;
+        private float _clipFadeSeconds = 0.12f;
         [Tooltip("吃东西动画最长演多久。这条动画本身是循环的，演完自动换回原来那条")]
-        [SerializeField] private float _eatMaxSeconds = 2.5f;
+        private float _eatMaxSeconds = 2.5f;
         [Tooltip("喂下去多久之后出吃东西音效（秒，从喂的那一刻算）")]
-        [SerializeField] private float _eatSoundDelay = 0.2f;
+        private float _eatSoundDelay = 0.2f;
         [Tooltip("女仆语音的放大倍率（只有她自己的语音走这个；吃东西音效、砸中音效这类非语音一律原音量播，不放大）")]
-        [SerializeField] private float _soundVolume = 6f;
+        private float _soundVolume = 6f;
 
         [Header("素材（你来填）")]
         [Tooltip("吃东西音效，可以放多个，每次喂随机选一个播")]
-        [SerializeField] private AudioClip[] _eatSounds;
+        private AudioClip[] _eatSounds;
         [Tooltip("蛋糕预制体：中挡甩她脸上用（Assets/Prefab/cake.prefab）。不接的话中挡按钮点不动")]
-        [SerializeField] private GameObject _cakePrefab;
+        private GameObject _cakePrefab;
         [Tooltip("蛋糕砸到脸上的音效")]
-        [SerializeField] private AudioClip _cakeHitSound;
+        private AudioClip _cakeHitSound;
         [Tooltip("喷粒子用的贴图")]
-        [SerializeField] private Texture2D _particleTexture;
+        private Texture2D _particleTexture;
         [Tooltip("喷粒子用的材质（可选）：接了就用它，忽略上面的贴图")]
-        [SerializeField] private Material _particleMaterial;
+        private Material _particleMaterial;
         [Tooltip("进喂蛋糕模式时把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
-        [SerializeField] private float _feedOrthographicSize = 0.8f;
+        private float _feedOrthographicSize = 0.8f;
 
         [Header("粒子")]
-        [SerializeField] private int _particleCount = 12;
-        [SerializeField] private float _particleLifetime = 0.6f;
-        [SerializeField] private float _particleSpeed = 0.35f;
+        private int _particleCount = 12;
+        private float _particleLifetime = 0.6f;
+        private float _particleSpeed = 0.35f;
         [Tooltip("粒子大小（随机取区间），单位是世界单位")]
-        [SerializeField] private Vector2 _particleSize = new Vector2(0.05f, 0.09f);
-        [SerializeField] private Color _particleColor = Color.white;
+        private Vector2 _particleSize = new Vector2(0.05f, 0.09f);
+        private Color _particleColor = Color.white;
         [Tooltip("出粒子的位置，按头部包围盒的半尺寸取比例：y 负数是嘴（头中心往下），z 正数是她的正前方")]
-        [SerializeField] private Vector3 _particleOffset = new Vector3(0f, -0.35f, 0.9f);
+        private Vector3 _particleOffset = new Vector3(0f, -0.35f, 0.9f);
         [Tooltip("喂下去多久之后喷粒子（秒，从喂的那一刻算）")]
-        [SerializeField] private float _particleDelay = 1f;
-        [SerializeField] private float _particleGravity = 0.5f;
+        private float _particleDelay = 1f;
+        private float _particleGravity = 0.5f;
 
         [Header("说话")]
         [Tooltip("吃完随机说的那句话（语音）。默认 maid.mode.feed，声音包里没有这条会自动回退 idle")]
-        [SerializeField] private string _voiceEvent = MaidSoundId.Feed;
+        private string _voiceEvent = MaidSoundId.Feed;
         [Tooltip("喂下去多久之后说（秒，从喂的那一刻算）")]
-        [SerializeField] private float _voiceDelay = 1.7f;
-        [SerializeField] private float _lineSeconds = 4f;
-        [SerializeField] private string[] _lines =
+        private float _voiceDelay = 1.7f;
+        private float _lineSeconds = 4f;
+        private string[] _lines =
         {
             "唔……好吃，谢谢主人！",
             "这个蛋糕是给我的吗？",
@@ -92,36 +95,36 @@ namespace MaidHome.Gameplay.Maid
 
         [Header("怎么喂")]
         [Tooltip("一进模式选中的挡位：1 轻 / 2 中 / 3 重")]
-        [SerializeField] private int _defaultLevel = LevelLight;
+        private int _defaultLevel = LevelLight;
         [Tooltip("连点冷却：离上一次喂/扔要隔这么久才会响应下一次点击（轻挡和中挡共用）")]
-        [SerializeField] private float _feedCooldownSeconds = 0.3f;
+        private float _feedCooldownSeconds = 0.3f;
 
         [Header("中挡：扔蛋糕")]
         [Tooltip("出手点的屏幕高度（视口坐标，0 = 屏幕下沿，1 = 上沿；越负越靠屏幕外=离她越远）；屏幕 x 跟着你点的地方走，等于从手指下方扔上去")]
-        [SerializeField] private float _cakeStartViewportY = -0.6f;
+        private float _cakeStartViewportY = -0.6f;
         [Tooltip("出手点沿视线方向离她多远（往摄像机/玩家这边推，单位是世界单位）。正交相机下屏幕位置不变，只影响真实距离：越大=越靠玩家、飞得越远")]
-        [SerializeField] private float _cakeStartDepth = 1f;
+        private float _cakeStartDepth = 1f;
         [Tooltip("蛋糕从出手点飞到点的地方要多久。用飞行时间反推初速度，保证落到手指点的地方，中途的抛物线还是物理引擎算的")]
-        [SerializeField] private float _cakeFlySeconds = 0.35f;
+        private float _cakeFlySeconds = 0.35f;
         [Tooltip("蛋糕飞行时的翻滚速度（度/秒）")]
-        [SerializeField] private float _cakeSpinDegrees = 720f;
+        private float _cakeSpinDegrees = 720f;
         [Tooltip("场上最多留这么多块扔出去的蛋糕，再多就删最早的（没砸中的那些）")]
-        [SerializeField] private int _maxThrownCakes = 10;
+        private int _maxThrownCakes = 10;
 
         [Header("重挡：用力砸")]
         [Tooltip("重挡的飞行时间（比中挡快，越小越快）")]
-        [SerializeField] private float _heavyFlySeconds = 0.18f;
+        private float _heavyFlySeconds = 0.18f;
         [Tooltip("重砸时蛋糕砸到脸上的音效（和中挡分开）。留空就还用中挡那个")]
-        [SerializeField] private AudioClip _heavyHitSound;
+        private AudioClip _heavyHitSound;
         [Tooltip("重挡砸中后头往一侧扭多少度（参考戳脸的幅度）。扭的方向反了就把这个值改成负数")]
-        [SerializeField] private float _heavyTwistDegrees = 34f;
+        private float _heavyTwistDegrees = 34f;
         [Tooltip("扭头时同时低头/抬头的角度")]
-        [SerializeField] private float _heavyTwistPitchDegrees = 10f;
+        private float _heavyTwistPitchDegrees = 10f;
         [Tooltip("扭头动作演多久：前 22% 快速扭过去，剩下慢慢回正")]
-        [SerializeField] private float _heavyTwistSeconds = 0.5f;
+        private float _heavyTwistSeconds = 0.5f;
         [Tooltip("重挡砸中的语音事件（和中挡区分开，填声音包里的事件 id）")]
-        [SerializeField] private string _heavyVoiceEvent = MaidSoundId.Hurt;
-        [SerializeField] private string[] _heavyLines =
+        private string _heavyVoiceEvent = MaidSoundId.Hurt;
+        private string[] _heavyLines =
         {
             "呜……！主人你干嘛呀！",
             "好疼好疼好疼！",
@@ -130,22 +133,22 @@ namespace MaidHome.Gameplay.Maid
             "哼，再这样我可要还手了哦。"
         };
         [Tooltip("连击多久没续上就断（只对重挡生效）")]
-        [SerializeField] private float _comboTimeoutSeconds = 2.5f;
+        private float _comboTimeoutSeconds = 2.5f;
         [Tooltip("连到多少的倍数放「N连抽」彩蛋（只对重挡生效）")]
-        [SerializeField] private int _comboMilestoneStep = 100;
+        private int _comboMilestoneStep = 100;
         [Tooltip("「N连抽」的彩蛋音，留空就用现场合成的上行琶音")]
-        [SerializeField] private AudioClip _milestoneClip;
+        private AudioClip _milestoneClip;
         [Tooltip("「N连抽」彩蛋粒子的尺寸倍率（模组原始尺寸 = 1，搬到手机上要放大）")]
-        [SerializeField] private float _comboParticleScale = 2f;
+        private float _comboParticleScale = 2f;
         [Tooltip("连击数整体再放大多少（在 HUD 自己的字号比例之上乘，1.45 = 比原来的大一圈）")]
-        [SerializeField] private float _comboScale = 1.45f;
+        private float _comboScale = 1.45f;
         [Tooltip("砸到脸上的闪红。Alpha 当强度用：1 = 纯红（原版受伤），0.5 = 半透明红，0 = 不闪")]
-        [SerializeField] private Color _cakeFlashColor = new Color(1f, 0f, 0f, 0.5f);
+        private Color _cakeFlashColor = new Color(1f, 0f, 0f, 0.5f);
         [Tooltip("砸到脸上的闪红时长。原版受伤是 0.5 秒")]
-        [SerializeField] private float _cakeFlashSeconds = 0.5f;
+        private float _cakeFlashSeconds = 0.5f;
         [Tooltip("砸中之后的语音事件，和轻挡那句 maid.mode.feed 区分开：填声音包里的事件 id（例如 maid.ai.hurt / maid.ai.tamed）")]
-        [SerializeField] private string _cakeVoiceEvent = MaidSoundId.Hurt;
-        [SerializeField] private string[] _cakeLines =
+        private string _cakeVoiceEvent = MaidSoundId.Hurt;
+        private string[] _cakeLines =
         {
             "呜哇！谁扔的蛋糕呀！",
             "唔！我的脸……",
@@ -154,7 +157,7 @@ namespace MaidHome.Gameplay.Maid
             "不过……还挺好吃的。"
         };
         [Tooltip("SimpleBedrockModel 没有动画表，吃东西时那个抬手动作演多久")]
-        [SerializeField] private float _simpleEatSeconds = 1.5f;
+        private float _simpleEatSeconds = 1.5f;
 
         public bool IsActive { get; private set; }
 
@@ -193,14 +196,19 @@ namespace MaidHome.Gameplay.Maid
         float _eatReturnTime;
         float _lastFeedTime = -100f;
 
+        void Awake()
+        {
+            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidFeedInteraction");
+        }
+
         public bool Supports(MaidAgent agent)
         {
-            return agent != null;
+            return _settings != null && agent != null;
         }
 
         public bool Begin(MaidAgent agent)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }

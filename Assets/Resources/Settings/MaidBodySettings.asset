@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b9d2f4a8c1e47d3a5b7c0e2f4a81639, type: 3}
+  m_Name: MaidBodySettings
+  m_EditorClassIdentifier: 
+  _spring: 10000
+  _damper: 100
+  _tolerance: 0.025
+  _springDelayFrames: 3
+  _pickFallbackPixels: 24
+  _pickFallbackScreenRatio: 0.04
+  _rayDistance: 500
+  _dragMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  _ignoreAllSelfCollision: 1
+  _disableAngleLimits: 0
+  _sensorGravity: 9.81
+  _sensorAccelerationScale: 10
+  _sensorJerkScale: 0.5
+  _sensorSmoothing: 6
+  _sensorDeadzone: 0.02
+  _motionDepthRatio: 0.7
+  _motionWallThickness: 0.08
+  _impactFlashSpeed: 4
+  _impactFlashCooldown: 0.6
+  _hurtRestartCooldown: 0.15
+  _impactWarmupSeconds: 0.4
+  _impactFlashColor: {r: 1, g: 0, b: 0, a: 0.5}
+  _impactFlashSeconds: 0.5
+  _impactVoiceVolume: 6

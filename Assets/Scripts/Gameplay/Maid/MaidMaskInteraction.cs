@@ -33,12 +33,15 @@ namespace MaidHome.Gameplay.Maid
             "不戴了不戴了。",
         };
 
+        [Header("配置（接了就覆盖下面的默认参数）")]
+        [SerializeField] private MaidMaskSettings _settings;
+
         [Header("挂件配置（预制体留空就按 Resources/MaidAttachment/mask 找）")]
-        [SerializeField] private MaidAttachmentStyle _style = new MaidAttachmentStyle { SizeRatio = 1.15f };
+        private MaidAttachmentStyle _style = new MaidAttachmentStyle { SizeRatio = 1.15f };
         [Tooltip("面具模式把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
-        [SerializeField] private float _maskOrthographicSize = 0.35f;
+        private float _maskOrthographicSize = 0.35f;
         [Tooltip("面具模式的俯角（度）：-1 = 沿用 HouseCameraFitter 的设置")]
-        [SerializeField] private float _maskFocusPitchDegrees = -1f;
+        private float _maskFocusPitchDegrees = -1f;
 
         [Header("自定义 UI（不接就用同一物体上的 / 自动生成一块）")]
         [SerializeField] private MaidMaskPanel _panel;
@@ -112,6 +115,7 @@ namespace MaidHome.Gameplay.Maid
 
         void Awake()
         {
+            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidMaskInteraction");
             // 把配置登记给全局：从存档恢复时也按同一套参数挂，两处调不一样就怪了
             MaidAttachmentStyles.UseMask(_style);
         }
@@ -119,12 +123,12 @@ namespace MaidHome.Gameplay.Maid
         /// <summary>有面具预制体就能戴</summary>
         public bool Supports(MaidAgent agent)
         {
-            return agent != null && MaidMaskView.Supports();
+            return _settings != null && agent != null && MaidMaskView.Supports();
         }
 
         public bool Begin(MaidAgent agent)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }

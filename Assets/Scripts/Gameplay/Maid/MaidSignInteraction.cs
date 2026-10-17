@@ -34,12 +34,15 @@ namespace MaidHome.Gameplay.Maid
             "呼，不用再挂着那个了。",
         };
 
+        [Header("配置（接了就覆盖下面的默认参数）")]
+        [SerializeField] private MaidSignSettings _settings;
+
         [Tooltip("挂牌模式把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
-        [SerializeField] private float _signOrthographicSize = 0.75f;
+        private float _signOrthographicSize = 0.75f;
         [Tooltip("挂牌模式的俯角（度）：牌子挂在胸口、是竖着的板面，俯得太狠看不清字；-1 = 沿用 HouseCameraFitter 的设置")]
-        [SerializeField] private float _signFocusPitchDegrees = 25f;
+        private float _signFocusPitchDegrees = 25f;
         [Tooltip("牌子挂件配置：预制体留空就按 Resources/MaidAttachment/sign 找；挂点/大小/朝向都在这里调")]
-        [SerializeField] private MaidAttachmentStyle _style = new MaidAttachmentStyle { SizeRatio = 0.3f };
+        private MaidAttachmentStyle _style = new MaidAttachmentStyle { SizeRatio = 0.3f };
         [Tooltip("编辑面板，留空就用同一物体上的 MaidSignPanel，都没有就自动生成一块。"
             + "要接自己的 UI 就把 MaidSignPanel 在场景里挂好（填它的 Panel / 输入框 / 按钮 / 色板），再拖到这里")]
         [SerializeField] private MaidSignPanel _panel;
@@ -56,6 +59,7 @@ namespace MaidHome.Gameplay.Maid
 
         void Awake()
         {
+            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidSignInteraction");
             // 配置登记给全局：从存档恢复时也用同一套参数挂牌子
             MaidAttachmentStyles.UseSign(_style);
         }
@@ -69,12 +73,12 @@ namespace MaidHome.Gameplay.Maid
         /// <summary>挂牌对模型没要求（挂点认不出就按身高比例挂），有存档就能挂</summary>
         public bool Supports(MaidAgent agent)
         {
-            return agent != null;
+            return _settings != null && agent != null;
         }
 
         public bool Begin(MaidAgent agent)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }

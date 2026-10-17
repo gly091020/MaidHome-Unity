@@ -19,6 +19,8 @@ namespace MaidHome.Gameplay.Maid
         public event Action TailRequested;
         /// 点了「摸脸」
         public event Action FaceRequested;
+        /// 点了「摸摸」
+        public event Action PetRequested;
         /// 点了「喂蛋糕」
         public event Action FeedRequested;
         /// 点了「梳毛」
@@ -37,6 +39,8 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private Button _tailButton;
         [Tooltip("「摸脸」按钮。自定义面板留空的话，运行时会照「摸尾巴」按钮的样子自动加一个")]
         [SerializeField] private Button _faceButton;
+        [Tooltip("「摸摸」按钮。自定义面板留空的话，运行时会在面板上方补一个")]
+        [SerializeField] private Button _petButton;
         [Tooltip("「喂蛋糕」按钮。自定义面板留空的话，运行时会在「摸脸」右边自动加一个")]
         [SerializeField] private Button _feedButton;
         [Tooltip("「梳毛」按钮。自定义面板留空的话，运行时会照「摸尾巴」按钮的样子在左边补一个")]
@@ -79,6 +83,12 @@ namespace MaidHome.Gameplay.Maid
             if (_faceButton != null)
             {
                 _faceButton.onClick.AddListener(RequestFace);
+            }
+
+            EnsurePetButton();
+            if (_petButton != null)
+            {
+                _petButton.onClick.AddListener(RequestPet);
             }
 
             EnsureFeedButton();
@@ -125,6 +135,11 @@ namespace MaidHome.Gameplay.Maid
                 _faceButton.onClick.RemoveListener(RequestFace);
             }
 
+            if (_petButton != null)
+            {
+                _petButton.onClick.RemoveListener(RequestPet);
+            }
+
             if (_feedButton != null)
             {
                 _feedButton.onClick.RemoveListener(RequestFeed);
@@ -148,6 +163,7 @@ namespace MaidHome.Gameplay.Maid
             CloseRequested = null;
             TailRequested = null;
             FaceRequested = null;
+            PetRequested = null;
             FeedRequested = null;
             GroomRequested = null;
             BodyRequested = null;
@@ -176,7 +192,7 @@ namespace MaidHome.Gameplay.Maid
         }
 
         public void Open(MaidSaveData maid, bool tailAvailable, bool faceAvailable, bool feedAvailable,
-            bool groomAvailable, bool bodyAvailable)
+            bool groomAvailable, bool bodyAvailable, bool petAvailable = true)
         {
             EnsureCreated();
             PlacePanel();
@@ -198,6 +214,7 @@ namespace MaidHome.Gameplay.Maid
 
             SetTailAvailable(tailAvailable);
             SetFaceAvailable(faceAvailable);
+            SetPetAvailable(petAvailable);
             SetFeedAvailable(feedAvailable);
             SetGroomAvailable(groomAvailable);
             SetBodyAvailable(bodyAvailable);
@@ -206,7 +223,7 @@ namespace MaidHome.Gameplay.Maid
             if (_optionsText != null)
             {
                 _optionsText.text = BuildOptions(maid, tailAvailable, faceAvailable, feedAvailable,
-                    groomAvailable, bodyAvailable);
+                    groomAvailable, bodyAvailable, petAvailable);
             }
         }
 
@@ -225,6 +242,15 @@ namespace MaidHome.Gameplay.Maid
             if (_faceButton != null)
             {
                 _faceButton.interactable = available;
+            }
+        }
+
+        /// 模型没有头骨骼就把「摸摸」灰掉
+        public void SetPetAvailable(bool available)
+        {
+            if (_petButton != null)
+            {
+                _petButton.interactable = available;
             }
         }
 
@@ -287,6 +313,14 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
+        public void RequestPet()
+        {
+            if (PetRequested != null)
+            {
+                PetRequested();
+            }
+        }
+
         public void RequestFeed()
         {
             if (FeedRequested != null)
@@ -329,7 +363,7 @@ namespace MaidHome.Gameplay.Maid
         }
 
         static string BuildOptions(MaidSaveData maid, bool tailAvailable, bool faceAvailable, bool feedAvailable,
-            bool groomAvailable, bool bodyAvailable)
+            bool groomAvailable, bool bodyAvailable, bool petAvailable)
         {
             string body;
             if (tailAvailable && faceAvailable)
@@ -354,10 +388,11 @@ namespace MaidHome.Gameplay.Maid
             }
 
             string food = feedAvailable ? "「喂蛋糕」选挡位喂她吃东西\n" : "";
+            string pet = petAvailable ? "「摸摸」拖动屏幕：左右摸头 / 往下按\n" : "";
             string groom = groomAvailable ? "「梳毛」沿头发、耳朵、尾巴刷；刷反了会疼\n" : "";
             string bodyLine = bodyAvailable ? "「玩全身」按住任意部位拖动；退出会还原站姿\n" : "";
             string attach = "「挂件」选挂牌子（写字、吓唬别的女仆）或戴面具（贴照片）\n";
-            return food + groom + bodyLine + attach + body;
+            return food + pet + groom + bodyLine + attach + body;
         }
 
         static string BuildInfo(MaidSaveData maid)
@@ -442,6 +477,31 @@ namespace MaidHome.Gameplay.Maid
             }
 
             _faceButton = CreateButton(_panelRoot.transform, "摸脸", position, size);
+        }
+
+        /// <summary>
+        /// 自定义面板没接「摸摸」按钮时，挂在面板上沿右侧。
+        /// 底下那排通常已经排满，压进别人按钮里更糟；建议自己加一个接到 Pet Button。
+        /// </summary>
+        void EnsurePetButton()
+        {
+            if (_petButton != null || _panelRoot == null)
+            {
+                return;
+            }
+
+            _petButton = CreateButton(_panelRoot.transform, "摸摸", Vector2.zero, new Vector2(180f, 56f));
+            RectTransform rect = _petButton.transform as RectTransform;
+            if (rect != null)
+            {
+                rect.anchorMin = new Vector2(1f, 1f);
+                rect.anchorMax = new Vector2(1f, 1f);
+                rect.pivot = new Vector2(1f, 0f);
+                rect.anchoredPosition = new Vector2(-24f, 8f);
+            }
+
+            Debug.LogWarning("自定义女仆交互面板没接「摸摸」按钮，先自动挂在面板上沿了；"
+                + "建议自己加一个按钮接到 MaidInteractionPanel 的 Pet Button", this);
         }
 
         /// <summary>

@@ -25,6 +25,9 @@ namespace MaidHome.Gameplay.Maid
             get { return _current; }
         }
 
+        [Header("配置（接了就覆盖下面的默认参数）")]
+        [SerializeField] private MaidInteractionControllerSettings _settings;
+
         [SerializeField] private MaidInteractionPanel _panel;
         [Tooltip("第二层「挂件」选择面板。留空就找同一物体上的 / 场景里唯一的那份 MaidAttachmentMenuPanel，"
             + "都没有才自动生成一块")]
@@ -34,37 +37,44 @@ namespace MaidHome.Gameplay.Maid
         [Tooltip("打开女仆互动界面时要藏起来的物体组合")]
         [SerializeField] private GameObject _hideOnOpen;
         [Tooltip("点开女仆后她转过来面对相机要多久")]
-        [SerializeField] private float _faceCameraSeconds = 0.35f;
+        private float _faceCameraSeconds = 0.35f;
         [Tooltip("moreanimation 的 tail_sniff.ogg，留空就只是没声音")]
-        [SerializeField] private AudioClip _tailSniffClip;
+        private AudioClip _tailSniffClip;
         [Tooltip("moreanimation 的 slap.ogg，留空就只是没声音")]
-        [SerializeField] private AudioClip _slapClip;
+        private AudioClip _slapClip;
         [Tooltip("进摸脸模式时把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
-        [SerializeField] private float _faceOrthographicSize = 0.8f;
+        private float _faceOrthographicSize = 0.8f;
         [Tooltip("摸脸模式专用俯角（度）：相机站在她斜上方往下看的角度，越小越平视她的脸。-1 = 沿用 HouseCameraFitter 的设置")]
-        [SerializeField] private float _faceFocusPitchDegrees = -1f;
+        private float _faceFocusPitchDegrees = -1f;
         [Tooltip("摸脸模式取景中心往上抬多少（按头部包围盒半高）。-1 = 沿用 HouseCameraFitter 的设置")]
-        [SerializeField] private float _faceFocusLookHeightRatio = -1f;
+        private float _faceFocusLookHeightRatio = -1f;
+        [Tooltip("摸摸模式把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
+        private float _petOrthographicSize = 0.65f;
+        [Tooltip("摸摸模式专用俯角（度）。-1 = 沿用 HouseCameraFitter 的设置")]
+        private float _petFocusPitchDegrees = -1f;
+        [Tooltip("摸摸模式取景中心往上抬多少（按头部包围盒半高）。-1 = 沿用 HouseCameraFitter 的设置")]
+        private float _petFocusLookHeightRatio = -1f;
         [Tooltip("喂蛋糕选中/重挡时临时把相机切成透视的 fov（切回轻挡或退出时恢复正交）")]
-        [SerializeField] private float _feedPerspectiveFov = 15f;
+        private float _feedPerspectiveFov = 15f;
         [Tooltip("梳毛模式把相机推近到这个正交尺寸，之后再按 _groomPerspectiveFov 切成透视")]
-        [SerializeField] private float _groomOrthographicSize = 0.9f;
+        private float _groomOrthographicSize = 0.9f;
         [Tooltip("梳毛取景的俯角（度）：她躺着，要从斜上方往下看，比摸脸的 45° 更陡。-1 = 沿用 HouseCameraFitter 的设置")]
-        [SerializeField] private float _groomFocusPitchDegrees = 65f;
+        private float _groomFocusPitchDegrees = 65f;
         [Tooltip("梳毛取景的远近倍率：<1 拉近、>1 退远（取景框和最小尺寸一起缩放，所以一定生效）")]
-        [SerializeField] private float _groomZoom = 1f;
+        private float _groomZoom = 1f;
         [Tooltip("梳毛模式的透视 fov。0 = 不切透视，全程用正交（最稳，画面不会跳）；-1 = 自动：按正交取景的画面高度反推 fov，有立体感但画面大小不变；填正数 = 固定 fov（模组那边是坐垫上的第一人称，所以给了这个口子）")]
-        [SerializeField] private float _groomPerspectiveFov;
+        private float _groomPerspectiveFov;
         [Tooltip("挂牌模式把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
-        [SerializeField] private float _signOrthographicSize = -1f;
+        private float _signOrthographicSize = -1f;
         [Tooltip("面具模式把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
-        [SerializeField] private float _maskOrthographicSize = -1f;
-        [SerializeField] private float _clickDistance = 300f;
-        [SerializeField] private LayerMask _clickMask = ~0;
+        private float _maskOrthographicSize = -1f;
+        private float _clickDistance = 300f;
+        private LayerMask _clickMask = ~0;
 
         MaidAgent _current;
         MaidTailInteraction _tail;
         MaidFaceInteraction _face;
+        MaidHeadPetInteraction _pet;
         MaidFeedInteraction _feed;
         MaidGroomingInteraction _groom;
         MaidBodyInteraction _body;
@@ -77,6 +87,7 @@ namespace MaidHome.Gameplay.Maid
 
         void Awake()
         {
+            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidInteractionController");
             if (_panel == null)
             {
                 _panel = GetComponent<MaidInteractionPanel>();
@@ -102,6 +113,12 @@ namespace MaidHome.Gameplay.Maid
             if (_face == null)
             {
                 _face = gameObject.AddComponent<MaidFaceInteraction>();
+            }
+
+            _pet = GetComponent<MaidHeadPetInteraction>();
+            if (_pet == null)
+            {
+                _pet = gameObject.AddComponent<MaidHeadPetInteraction>();
             }
 
             _feed = GetComponent<MaidFeedInteraction>();
@@ -219,6 +236,7 @@ namespace MaidHome.Gameplay.Maid
                 _panel.CloseRequested += Close;
                 _panel.TailRequested += OpenTail;
                 _panel.FaceRequested += OpenFace;
+                _panel.PetRequested += OpenPet;
                 _panel.FeedRequested += OpenFeed;
                 _panel.GroomRequested += OpenGroom;
                 _panel.BodyRequested += OpenBody;
@@ -233,6 +251,11 @@ namespace MaidHome.Gameplay.Maid
             if (_face != null)
             {
                 _face.Ended += OnFaceEnded;
+            }
+
+            if (_pet != null)
+            {
+                _pet.Ended += OnPetEnded;
             }
 
             if (_feed != null)
@@ -275,6 +298,7 @@ namespace MaidHome.Gameplay.Maid
                 _panel.CloseRequested -= Close;
                 _panel.TailRequested -= OpenTail;
                 _panel.FaceRequested -= OpenFace;
+                _panel.PetRequested -= OpenPet;
                 _panel.FeedRequested -= OpenFeed;
                 _panel.GroomRequested -= OpenGroom;
                 _panel.BodyRequested -= OpenBody;
@@ -289,6 +313,11 @@ namespace MaidHome.Gameplay.Maid
             if (_face != null)
             {
                 _face.Ended -= OnFaceEnded;
+            }
+
+            if (_pet != null)
+            {
+                _pet.Ended -= OnPetEnded;
             }
 
             if (_feed != null)
@@ -328,6 +357,11 @@ namespace MaidHome.Gameplay.Maid
                 _body.Abort();
             }
 
+            if (_pet != null && _pet.IsActive)
+            {
+                _pet.Abort();
+            }
+
             // 界面状态跟着控制器走，别让背包按钮留在隐藏状态
             SetInventoryVisible(true);
             RestoreFeedProjection();
@@ -350,6 +384,12 @@ namespace MaidHome.Gameplay.Maid
 
             // 摸脸模式同理
             if (_face != null && _face.IsActive)
+            {
+                return;
+            }
+
+            // 摸摸模式同理
+            if (_pet != null && _pet.IsActive)
             {
                 return;
             }
@@ -502,6 +542,11 @@ namespace MaidHome.Gameplay.Maid
                 _face.Abort();
             }
 
+            if (_pet != null && _pet.IsActive)
+            {
+                _pet.Abort();
+            }
+
             if (_feed != null && _feed.IsActive)
             {
                 _feed.Abort();
@@ -645,6 +690,55 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
+        void OpenPet()
+        {
+            if (_pet == null || _current == null || _pet.IsActive)
+            {
+                return;
+            }
+
+            if (!_pet.Begin(_current))
+            {
+                return;
+            }
+
+            _panel.Close();
+            FocusPet();
+        }
+
+        void FocusPet()
+        {
+            if (_cameraFitter == null || _pet == null || _current == null || _petOrthographicSize <= 0f)
+            {
+                return;
+            }
+
+            Bounds head;
+            if (!_pet.TryGetHeadBounds(out head))
+            {
+                return;
+            }
+
+            _cameraFitter.FocusKeepingAngle(head, _current.transform, _petOrthographicSize,
+                _petFocusPitchDegrees >= 0f ? _petFocusPitchDegrees : _cameraFitter.FocusPitchDegrees,
+                _petFocusLookHeightRatio >= 0f
+                    ? _petFocusLookHeightRatio
+                    : _cameraFitter.FocusLookHeightRatio);
+        }
+
+        void OnPetEnded()
+        {
+            if (_current != null && _cameraFitter != null && _petOrthographicSize > 0f)
+            {
+                _cameraFitter.FocusKeepingAngle(_current.GetBounds(), _current.transform);
+            }
+
+            if (_current != null && _panel != null)
+            {
+                ReopenPanel();
+            }
+        }
+
         void OpenFeed()
         {
             if (_feed == null || _current == null || _feed.IsActive)
@@ -702,7 +796,8 @@ namespace MaidHome.Gameplay.Maid
 
             _panel.Open(_current.Save, _tail != null && _tail.Supports(_current),
                 _face != null && _face.Supports(_current), _feed != null && _feed.Supports(_current),
-                _groom != null && _groom.Supports(_current), _body != null && _body.Supports(_current));
+                _groom != null && _groom.Supports(_current), _body != null && _body.Supports(_current),
+                _pet != null && _pet.Supports(_current));
         }
 
         /// <summary>第一层点「挂件」→ 第二层：选挂牌 / 面具</summary>

@@ -33,6 +33,9 @@ namespace MaidHome.Gameplay.Maid
 
         public event Action Ended;
 
+        [Header("配置（接了就覆盖下面的默认参数）")]
+        [SerializeField] private MaidGroomingSettings _settings;
+
         /// <summary>照抄模组 GroomingBrushState.FAVOR_TICKS：有效接触 400 tick = 20 秒</summary>
         const float FavorTicks = 400f;
         /// <summary>模组 CONTACT_GRACE = 2 tick，接触断开一会儿就暂停累计，但不丢余额</summary>
@@ -42,61 +45,61 @@ namespace MaidHome.Gameplay.Maid
 
         [Header("拾取")]
         [Tooltip("耳朵的补拾取放大倍率（模组是 1.3；手指没有鼠标准，默认再宽一点）")]
-        [SerializeField] private float _earHitScale = 1.4f;
+        private float _earHitScale = 1.4f;
         [Tooltip("一次刷动超过这个长度就不算（配合投影跳变丢样本）")]
-        [SerializeField] private float _maxDragWorld = 0.35f;
+        private float _maxDragWorld = 0.35f;
 
         [Header("顺毛 / 逆毛")]
         [Tooltip("头发也判顺逆毛（模组只在尾巴上判）。关掉就是只有尾巴有反应")]
-        [SerializeField] private bool _grainOnHair = true;
+        private bool _grainOnHair = true;
         [Tooltip("顺毛气泡的间隔，秒（模组 COMFORT_COOLDOWN = 60 tick）")]
-        [SerializeField] private float _comfortCooldown = 3f;
+        private float _comfortCooldown = 3f;
         [Tooltip("逆毛反应（闪红 + 语音 + 气泡）的间隔，秒（模组 REVERSE_COOLDOWN = 12 tick）")]
-        [SerializeField] private float _againstCooldown = 0.6f;
-        [SerializeField] private float _lineSeconds = 1.6f;
+        private float _againstCooldown = 0.6f;
+        private float _lineSeconds = 1.6f;
 
         [Header("摸耳朵")]
         [Tooltip("手指刚按到耳朵上就先压一点（等拖动才压会觉得没反应）")]
-        [SerializeField] private float _earPressOnTouch = 0.35f;
+        private float _earPressOnTouch = 0.35f;
 
         [Header("躺姿（照模组：梳毛时她是躺着的）")]
         [Tooltip("进模式就让她躺下。原模组那边是坐垫上的睡姿（moresleep5）再整体放倒 90°")]
-        [SerializeField] private bool _lieDown = true;
+        private bool _lieDown = true;
         [Tooltip("躺下时根节点绕自身 X 轴转多少度。+90 = 趴着（背、头发和尾巴都朝上，尾巴才梳得到）；-90 = 仰面躺着（工程里睡觉那套，但尾巴会压在身下够不着）")]
-        [SerializeField] private float _lieTiltDegrees = 90f;
+        private float _lieTiltDegrees = 90f;
         [Tooltip("贴地高度是按几何自动算的（放倒后最低点落到地面），这里是额外微调，单位是模型空间的米（会乘缩放）")]
-        [SerializeField] private float _lieLift = 0f;
+        private float _lieLift = 0f;
         [Tooltip("放倒后离地留多高，免得和地板完全贴住闪面")]
-        [SerializeField] private float _lieGroundClearance = 0.02f;
+        private float _lieGroundClearance = 0.02f;
         [Tooltip("有这条动画的模型直接播它拿躺姿；没有的（方块模型）走 MaidSimpleBedrockAnimator 的程序化睡姿 + 闭眼")]
-        [SerializeField] private string _sleepClip = "sleep";
+        private string _sleepClip = "sleep";
         [Tooltip("放倒前最多等这么久（秒）：她要是在转向镜头就等转完，已经站定了就立刻躺下")]
-        [SerializeField] private float _lieDelaySeconds = 0.45f;
+        private float _lieDelaySeconds = 0.45f;
         [Tooltip("退出梳毛时她转回来看镜头要多久")]
-        [SerializeField] private float _turnBackSeconds = 0.35f;
+        private float _turnBackSeconds = 0.35f;
         [Tooltip("取景要不要把尾巴也框进来：躺下后尾巴摊在一边，不框它的话尾巴在画面外就梳不到；嫌画面太远就关掉")]
-        [SerializeField] private bool _focusTailToo;
+        private bool _focusTailToo;
 
         [Header("拖尾巴")]
-        [SerializeField] private float _tailSensitivity = 1.85f;
+        private float _tailSensitivity = 1.85f;
         [Tooltip("拖动多少像素相当于 45°，越大越迟钝")]
-        [SerializeField] private float _tailDragPixels = 400f;
+        private float _tailDragPixels = 400f;
 
         [Header("闪红 / 音量")]
-        [SerializeField] private Color _flashColor = new Color(1f, 0f, 0f, 0.5f);
-        [SerializeField] private float _flashSeconds = 0.5f;
+        private Color _flashColor = new Color(1f, 0f, 0f, 0.5f);
+        private float _flashSeconds = 0.5f;
         [Tooltip("女仆受伤语音的放大倍率")]
-        [SerializeField] private float _voiceVolume = 6f;
+        private float _voiceVolume = 6f;
 
         [Header("满足")]
         [Tooltip("累计梳够这么久（秒）她会满足地夸一句。模组是 400 tick")]
-        [SerializeField] private float _cheerSeconds = 20f;
+        private float _cheerSeconds = 20f;
         [Tooltip("满足时放的这个音（女仆声音包里的 id）")]
-        [SerializeField] private string _cheerSoundId = MaidSoundId.Tamed;
+        private string _cheerSoundId = MaidSoundId.Tamed;
 
         [Header("调试")]
         [Tooltip("把当前刷到的部位 / 顺逆毛状态画在屏幕上，运行时按 F8 也能开关")]
-        [SerializeField] private bool _showDebug;
+        private bool _showDebug;
 
         // 台词照抄 moreanimation 的 zh_cn
         static readonly string[] WithGrainLines =
@@ -198,10 +201,15 @@ namespace MaidHome.Gameplay.Maid
         MaidWanderer _wanderer;
         CharacterController _controller;
 
+        void Awake()
+        {
+            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidGroomingInteraction");
+        }
+
         /// <summary>这个女仆能不能梳毛（认得出头发 / 耳朵 / 头顶 / 尾巴之一就行）</summary>
         public bool Supports(MaidAgent agent)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }
@@ -213,7 +221,7 @@ namespace MaidHome.Gameplay.Maid
 
         public bool Begin(MaidAgent agent)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }

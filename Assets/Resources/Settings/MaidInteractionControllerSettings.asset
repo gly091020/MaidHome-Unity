@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4a8e1c6b2f9d47a3b5e0c8d1f6a29375, type: 3}
+  m_Name: MaidInteractionControllerSettings
+  m_EditorClassIdentifier: 
+  _faceCameraSeconds: 0.35
+  _tailSniffClip: {fileID: 8300000, guid: 33abeaf31f8af1145bcb1599c6d51291, type: 3}
+  _slapClip: {fileID: 8300000, guid: 8b023f61748f7d243b2a8b23db1973be, type: 3}
+  _faceOrthographicSize: 0.8
+  _faceFocusPitchDegrees: -1
+  _faceFocusLookHeightRatio: 0
+  _petOrthographicSize: 0.65
+  _petFocusPitchDegrees: -1
+  _petFocusLookHeightRatio: -1
+  _feedPerspectiveFov: 15
+  _groomOrthographicSize: 0.9
+  _groomFocusPitchDegrees: 65
+  _groomZoom: 1
+  _groomPerspectiveFov: 30
+  _signOrthographicSize: -1
+  _maskOrthographicSize: -1
+  _clickDistance: 300
+  _clickMask:
+    serializedVersion: 2
+    m_Bits: 4294967295

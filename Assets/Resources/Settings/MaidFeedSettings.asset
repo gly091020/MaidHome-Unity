@@ -1,0 +1,80 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f2a6c4e1d7b49a3b5e9c0d2a6f31478, type: 3}
+  m_Name: MaidFeedSettings
+  m_EditorClassIdentifier: 
+  _eatClip: use_mainhand:eat
+  _begClip: beg
+  _clipFadeSeconds: 0.12
+  _eatMaxSeconds: 2.5
+  _eatSoundDelay: 0.2
+  _soundVolume: 6
+  _eatSounds:
+  - {fileID: 8300000, guid: d47ecb2a5023bd248b0756417abfd036, type: 3}
+  - {fileID: 8300000, guid: 64dd704905c99e4469b4f596281c25d2, type: 3}
+  - {fileID: 8300000, guid: 59a2b3b6439c0a244806e5b8519be1fe, type: 3}
+  _cakePrefab: {fileID: 8279705895998341090, guid: a39122777c921ec4f997792322b62cdb, type: 3}
+  _cakeHitSound: {fileID: 8300000, guid: 501290d06e653ee4f9085c066e0b9689, type: 3}
+  _particleTexture: {fileID: 1116137891368050039, guid: 92a9392e7a3b3474e9e4d24a0be2ab20, type: 3}
+  _particleMaterial: {fileID: 0}
+  _feedOrthographicSize: 0.8
+  _particleCount: 12
+  _particleLifetime: 0.6
+  _particleSpeed: 0.35
+  _particleSize: {x: 0.05, y: 0.09}
+  _particleColor: {r: 1, g: 1, b: 1, a: 1}
+  _particleOffset: {x: 0, y: -0.35, z: 0.9}
+  _particleDelay: 1
+  _particleGravity: 0.5
+  _voiceEvent: maid.mode.feed
+  _voiceDelay: 0
+  _lineSeconds: 4
+  _lines:
+  - "\u5514\u2026\u2026\u597D\u5403\uFF0C\u8C22\u8C22\u4E3B\u4EBA\uFF01"
+  - "\u8FD9\u4E2A\u86CB\u7CD5\u662F\u7ED9\u6211\u7684\u5417\uFF1F"
+  - "\u5976\u6CB9\u6CBE\u5230\u5634\u4E0A\u4E86\u2026\u2026"
+  - "\u563F\u563F\uFF0C\u4E3B\u4EBA\u5582\u7684\u6700\u597D\u5403\u3002"
+  - "\u518D\u6765\u4E00\u53E3\u4E5F\u53EF\u4EE5\u54E6\u3002"
+  _defaultLevel: 1
+  _feedCooldownSeconds: 0.1
+  _cakeStartViewportY: 0.5
+  _cakeStartDepth: 3
+  _cakeFlySeconds: 0.2
+  _cakeSpinDegrees: 720
+  _maxThrownCakes: 10
+  _heavyFlySeconds: 0.1
+  _heavyHitSound: {fileID: 8300000, guid: bf5563a87eb5c6a40ab52aa9737bf129, type: 3}
+  _heavyTwistDegrees: 34
+  _heavyTwistPitchDegrees: 10
+  _heavyTwistSeconds: 0.5
+  _heavyVoiceEvent: maid.ai.hurt
+  _heavyLines:
+  - "\u545C\u2026\u2026\uFF01\u4E3B\u4EBA\u4F60\u5E72\u561B\u5440\uFF01"
+  - "\u597D\u75BC\u597D\u75BC\u597D\u75BC\uFF01"
+  - "\u545C\u54C7\u2014\u2014\u8138\u8981\u88AB\u7838\u6241\u4E86\u2026\u2026"
+  - "\u8FC7\u3001\u8FC7\u5206\uFF01\u8FD9\u6B21\u771F\u7684\u751F\u6C14\u4E86\uFF01"
+  - "\u54FC\uFF0C\u518D\u8FD9\u6837\u6211\u53EF\u8981\u8FD8\u624B\u4E86\u54E6\u3002"
+  _comboTimeoutSeconds: 2.5
+  _comboMilestoneStep: 100
+  _milestoneClip: {fileID: 0}
+  _comboParticleScale: 2
+  _comboScale: 1.45
+  _cakeFlashColor: {r: 1, g: 0, b: 0, a: 0.5}
+  _cakeFlashSeconds: 0.5
+  _cakeVoiceEvent: maid.ai.hurt
+  _cakeLines:
+  - "\u545C\u54C7\uFF01\u8C01\u6254\u7684\u86CB\u7CD5\u5440\uFF01"
+  - "\u5514\uFF01\u6211\u7684\u8138\u2026\u2026"
+  - "\u86CB\u3001\u86CB\u7CD5\u7838\u5230\u8138\u4E0A\u4E86\u5566\uFF01"
+  - "\u54FC\uFF0C\u4E3B\u4EBA\u597D\u8FC7\u5206\u2026\u2026"
+  - "\u4E0D\u8FC7\u2026\u2026\u8FD8\u633A\u597D\u5403\u7684\u3002"
+  _simpleEatSeconds: 1.5

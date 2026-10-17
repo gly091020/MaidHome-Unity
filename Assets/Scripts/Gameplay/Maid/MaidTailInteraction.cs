@@ -20,46 +20,49 @@ namespace MaidHome.Gameplay.Maid
     {
         public event Action Ended;
 
+        [Header("配置（接了就覆盖下面的默认参数）")]
+        [SerializeField] private MaidTailSettings _settings;
+
         [Header("拖尾巴手感")]
-        [SerializeField] private float _dragSensitivity = 1.85f;
+        private float _dragSensitivity = 1.85f;
         [Tooltip("拖动多少像素相当于 45°，越大越迟钝")]
-        [SerializeField] private float _dragReferencePixels = 400f;
+        private float _dragReferencePixels = 400f;
         [Tooltip("拖起来方向反了就把某个改成 -1")]
-        [SerializeField] private float _yawSign = 1f;
-        [SerializeField] private float _pitchSign = -1f;
+        private float _yawSign = 1f;
+        private float _pitchSign = -1f;
         [Tooltip("侧向拉扯时尾巴跟着扭一点的比例")]
-        [SerializeField] private float _zFollow = 0.08f;
-        [SerializeField] private float _safeZoneWidth = 0.70f;
-        [SerializeField] private float _safeZoneHeight = 0.65f;
-        [SerializeField] private float _hitPaddingPixels = 8f;
+        private float _zFollow = 0.08f;
+        private float _safeZoneWidth = 0.70f;
+        private float _safeZoneHeight = 0.65f;
+        private float _hitPaddingPixels = 8f;
         [Tooltip("从抓住的位置往外拖这么多屏幕高度就算拉太狠")]
-        [SerializeField] private float _overstretchDragFraction = 0.3f;
+        private float _overstretchDragFraction = 0.3f;
 
         [Header("转身")]
         [Tooltip("进模式 / 退出模式时她转身要多久。相机全程不动，靠她转过来把尾巴露给镜头")]
-        [SerializeField] private float _turnSeconds = 0.35f;
+        private float _turnSeconds = 0.35f;
 
         [Header("吸一口")]
-        [SerializeField] private float _sniffTravelSeconds = 0.3f;
-        [SerializeField] private float _sniffMaxSeconds = 2f;
+        private float _sniffTravelSeconds = 0.3f;
+        private float _sniffMaxSeconds = 2f;
         [Tooltip("吸的时候正交 size 缩到这个比例（0.6 = 画面放大 1.67 倍）。正交下移动相机看不出远近，所以用 size 代替推近")]
-        [SerializeField] private float _sniffZoomScale = 0.6f;
+        private float _sniffZoomScale = 0.6f;
         [Tooltip("size 再小也不低于这个值，免得糊到看不清")]
-        [SerializeField] private float _sniffMinSize = 0.35f;
+        private float _sniffMinSize = 0.35f;
 
         [Header("音量")]
         [Tooltip("摸尾巴这块的音效和语音统一放大倍率。原文件本身录音小就往上调，最大 8")]
-        [SerializeField] private float _soundVolume = 6f;
+        private float _soundVolume = 6f;
 
         [Header("闪红")]
         [Tooltip("拉太狠时闪的乘色。Alpha 当强度用：1 = 纯红（原版受伤），0.5 = 半透明红，0 = 不闪")]
-        [SerializeField] private Color _flashColor = new Color(1f, 0f, 0f, 0.5f);
+        private Color _flashColor = new Color(1f, 0f, 0f, 0.5f);
         [Tooltip("原版受伤是 hurtTime = 10 tick，也就是 0.5 秒")]
-        [SerializeField] private float _flashSeconds = 0.5f;
+        private float _flashSeconds = 0.5f;
 
         [Header("台词")]
-        [SerializeField] private float _lineSeconds = 1f;
-        [SerializeField] private float _complainCooldownSeconds = 1f;
+        private float _lineSeconds = 1f;
+        private float _complainCooldownSeconds = 1f;
 
         // 台词照抄 moreanimation 的 zh_cn
         static readonly string[] OverstretchLines =
@@ -119,7 +122,7 @@ namespace MaidHome.Gameplay.Maid
 
         public bool Begin(MaidAgent agent, AudioClip sniffClip)
         {
-            if (agent == null)
+            if (_settings == null || agent == null)
             {
                 return false;
             }
@@ -167,10 +170,15 @@ namespace MaidHome.Gameplay.Maid
             return true;
         }
 
+        void Awake()
+        {
+            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidTailInteraction");
+        }
+
         /// 这个女仆的模型有没有能摸的尾巴，用来决定面板按钮能不能点
         public bool Supports(MaidAgent agent)
         {
-            if (agent == null || (agent.Save != null && agent.Save.SimpleBedrockModel))
+            if (_settings == null || agent == null || (agent.Save != null && agent.Save.SimpleBedrockModel))
             {
                 return false;
             }

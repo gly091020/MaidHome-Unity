@@ -13,6 +13,8 @@ Shader "MaidHome/MinecraftBlock"
         _SunAngleInfluence ("太阳方向影响", Range(0, 1)) = 0.3
         _TintColor ("染色覆盖颜色", Color) = (1, 1, 1, 1)
         _TintStrength ("染色覆盖强度", Range(0, 1)) = 0
+        _BurnColor ("燃烧叠加色", Color) = (0, 0, 0, 0)
+        _BurnStrength ("燃烧叠加强度", Range(0, 1)) = 0
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("剔除模式", Float) = 2
     }
 
@@ -46,6 +48,8 @@ Shader "MaidHome/MinecraftBlock"
             half _SunAngleInfluence;
             fixed4 _TintColor;
             half _TintStrength;
+            fixed4 _BurnColor;
+            half _BurnStrength;
 
             struct appdata
             {
@@ -114,6 +118,8 @@ Shader "MaidHome/MinecraftBlock"
                 light = min(light, 1.0);
 
                 fixed3 col = c.rgb * i.vcolor * i.shade.x * light;
+                fixed3 burn = _BurnColor.rgb * i.shade.x * light;
+                col = lerp(col, burn, saturate(_BurnColor.a * _BurnStrength));
                 UNITY_APPLY_FOG(i.fogCoord, col);
                 return fixed4(col, c.a);
             }

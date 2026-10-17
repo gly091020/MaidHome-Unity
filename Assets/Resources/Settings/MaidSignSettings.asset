@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e1f4a7c2d5b84e6a9c0d3b6f8a2e1475, type: 3}
+  m_Name: MaidSignSettings
+  m_EditorClassIdentifier: 
+  _signOrthographicSize: 0.75
+  _signFocusPitchDegrees: 25
+  _style:
+    Prefab: {fileID: 7403312605805034211, guid: 3a4ccbbb05d66e848bea5329987d573b, type: 3}
+    Bones: []
+    SizeRatio: 0.3
+    ScaleMultiplier: 1
+    Offset: {x: 0, y: 0.08, z: 0}
+    TextOffset: {x: 0, y: 0, z: 0}
+    TextScale: 1
+    FacingFix: {x: 0, y: 180, z: 0}
+    SimpleBedrockCorrection: 1
+    SimpleBedrockOffset: {x: 0, y: 0, z: 0.01}
+    SimpleBedrockScale: 1
