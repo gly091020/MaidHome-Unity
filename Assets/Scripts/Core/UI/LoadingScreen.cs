@@ -146,8 +146,8 @@ namespace MaidHome.Core.UI
             }
 
             float target = TargetProgress();
-            // 目标后面留一点余量：解析 glTF 这种没法报进度的长任务期间，条也能慢慢爬
-            float goal = AllComplete ? 1f : Mathf.Min(target + _creepAhead, 1f);
+            // 目标后面留一点余量让条继续爬，但任务没全部完成前绝不显示成 100%
+            float goal = AllComplete ? 1f : Mathf.Min(target + _creepAhead, 0.98f);
             _display = Mathf.MoveTowards(_display, goal, Mathf.Max(0.0001f, _creepSpeed) * Time.unscaledDeltaTime);
             UpdateVisual();
 

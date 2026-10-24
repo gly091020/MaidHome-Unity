@@ -463,6 +463,7 @@ namespace MaidHome.Interop.Maid
 
                 string rootName = reader.ReadString();
                 GameObject root = new GameObject(string.IsNullOrEmpty(rootName) ? "MaidModel" : rootName);
+                root.SetActive(false);
                 assets.Root = root;
                 assets.Texture = LoadTexture(Path.Combine(FolderOf(maid), TextureName));
                 Material material = BedrockModelBuilder.CreateMaterial(assets.Texture);

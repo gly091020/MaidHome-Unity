@@ -96,7 +96,7 @@ namespace MaidHome.Interop.Maid
 
             yield return null;
             MaidAssets cached;
-            if (cacheFresh && MaidAssetCache.TryLoad(maid, out cached, true))
+            if (MaidAssetCache.TryLoad(maid, out cached, cacheFresh))
             {
                 if (progress != null)
                 {
@@ -215,6 +215,11 @@ namespace MaidHome.Interop.Maid
             BedrockModelBuildResult model = modelBuilder.Build(geometry, texture);
             assets.Root = model.Root;
             assets.Texture = texture;
+            if (assets.Root != null)
+            {
+                assets.Root.SetActive(false);
+            }
+
             assets.Warnings.AddRange(model.Warnings);
             ApplyModelRules(assets);
 

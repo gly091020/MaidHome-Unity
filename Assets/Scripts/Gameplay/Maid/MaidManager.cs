@@ -27,6 +27,9 @@ namespace MaidHome.Gameplay.Maid
 
         public event Action Changed;
 
+        /// <summary>本次场景里的女仆恢复流程是否已经结束（成功、失败或无需恢复都算）。</summary>
+        public bool RestoreFinished { get; private set; }
+
         public string Kind
         {
             get { return "maid"; }
@@ -67,6 +70,7 @@ namespace MaidHome.Gameplay.Maid
         void Start()
         {
             EnsureLoaded();
+            RestoreFinished = !_restoreOnStart;
             _nextAutoSave = Time.unscaledTime + _autoSaveSeconds;
             if (_restoreOnStart)
             {
@@ -141,7 +145,7 @@ namespace MaidHome.Gameplay.Maid
                 _restoreRoutine = null;
             }
 
-            LoadingScreen.Complete(LoadingScreen.MaidJob);
+            FinishRestoreJob();
         }
 
         /// <summary>
@@ -311,7 +315,8 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
-        IEnumerator PlaceAtRoutineCore(string id, Vector3 feet, float yaw, Action<bool> completed, string loadingJob)
+        IEnumerator PlaceAtRoutineCore(string id, Vector3 feet, float yaw, Action<bool> completed, string loadingJob,
+            float loadingFrom = 0f, float loadingTo = 1f)
         {
             EnsureLoaded();
             MaidInstanceState state;
@@ -334,7 +339,8 @@ namespace MaidHome.Gameplay.Maid
                     {
                         if (!string.IsNullOrEmpty(loadingJob))
                         {
-                            LoadingScreen.Report(loadingJob, value, label);
+                            LoadingScreen.Report(loadingJob,
+                                Mathf.LerpUnclamped(loadingFrom, loadingTo, value), label);
                         }
                     });
 
@@ -553,11 +559,16 @@ namespace MaidHome.Gameplay.Maid
         {
             if (_restored)
             {
-                LoadingScreen.Complete(LoadingScreen.MaidJob);
+                if (RestoreFinished)
+                {
+                    FinishRestoreJob();
+                }
+
                 return;
             }
 
             _restored = true;
+            RestoreFinished = false;
             StartCoroutine(RestoreMaidsRoutine());
         }
 
@@ -568,9 +579,11 @@ namespace MaidHome.Gameplay.Maid
             if (!HouseContext.HasHouse)
             {
                 Debug.LogWarning("没有加载房子，上次放出来的女仆先留在背包");
-                LoadingScreen.Complete(LoadingScreen.MaidJob);
+                FinishRestoreJob();
                 yield break;
             }
+
+            LoadingScreen.Register(LoadingScreen.MaidJob, 1f, "正在恢复女仆…");
 
             string houseId = CurrentHouseId();
             List<MaidSaveData> pending = new List<MaidSaveData>();
@@ -592,13 +605,6 @@ namespace MaidHome.Gameplay.Maid
                 pending.Add(maid);
             }
 
-            if (pending.Count > 0)
-            {
-                // 房子那一步的 job 已经在跑了（权重更大），这里补上女仆这一段，
-                // 进度条会从"正在加载房子"接到"正在恢复女仆"
-                LoadingScreen.Register(LoadingScreen.MaidJob, 1f, "正在恢复女仆…");
-            }
-
             for (int i = 0; i < pending.Count; i++)
             {
                 MaidSaveData maid = pending[i];
@@ -617,8 +623,11 @@ namespace MaidHome.Gameplay.Maid
                     Debug.LogWarning("女仆存档位置不可走，已移到最近的格子: " + maid.Name);
                 }
 
+                LoadingScreen.Report(LoadingScreen.MaidJob, i / Mathf.Max(1f, pending.Count),
+                    "正在恢复女仆 " + (i + 1) + "/" + pending.Count + "…");
                 yield return RunPlacementSafely(
-                    PlaceAtRoutineCore(maid.Id, feet, record.RotationY, null, LoadingScreen.MaidJob), null);
+                    PlaceAtRoutineCore(maid.Id, feet, record.RotationY, null, LoadingScreen.MaidJob,
+                        i / Mathf.Max(1f, pending.Count), (i + 1f) / Mathf.Max(1f, pending.Count)), null);
                 LoadingScreen.Report(LoadingScreen.MaidJob, (i + 1f) / Mathf.Max(1f, pending.Count));
                 if (i + 1 < pending.Count)
                 {
@@ -628,7 +637,13 @@ namespace MaidHome.Gameplay.Maid
 
             _dirty = true;
             SaveNow();
+            FinishRestoreJob();
+        }
+
+        void FinishRestoreJob()
+        {
             LoadingScreen.Complete(LoadingScreen.MaidJob);
+            RestoreFinished = true;
         }
 
         void CapturePlacedPositions()

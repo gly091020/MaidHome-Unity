@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using MaidHome.Core.UI;
 using MaidHome.Gameplay.Bag;
 using MaidHome.Gameplay.House;
+using MaidHome.Gameplay.Maid;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -185,6 +186,12 @@ namespace MaidHome.Core.Scene
             yield return null;
             HouseSpawner houseSpawner = FindObjectOfType<HouseSpawner>();
             while (houseSpawner != null && !houseSpawner.LoadFinished)
+            {
+                yield return null;
+            }
+
+            MaidManager maidManager = FindObjectOfType<MaidManager>();
+            while (maidManager != null && !maidManager.RestoreFinished)
             {
                 yield return null;
             }
