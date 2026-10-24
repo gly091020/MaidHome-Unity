@@ -16,7 +16,7 @@ namespace MaidHome.Gameplay.Maid
     /// 模型资源取出后一直保留，收回只是 SetActive(false)，所以再次取出不用重新转换。
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class MaidManager : MonoBehaviour, IBagItemProvider, IBagSlowPlacement
+    public sealed class MaidManager : MonoBehaviour, IBagItemProvider, IBagSlowPlacement, IBagPacedPlacement
     {
         public static MaidManager Instance { get; private set; }
 
@@ -47,6 +47,8 @@ namespace MaidHome.Gameplay.Maid
             public MaidSaveData Save;
             public MaidAssets Assets;
             public bool InBag = true;
+            public bool CacheFreshKnown;
+            public bool CacheFresh;
         }
 
         void Awake()
@@ -226,13 +228,142 @@ namespace MaidHome.Gameplay.Maid
         {
             EnsureLoaded();
             MaidInstanceState state = FindState(id);
-            return state != null && state.Assets == null && !MaidAssetCache.IsFresh(state.Save);
+            if (state == null)
+            {
+                return false;
+            }
+
+            state.CacheFreshKnown = false;
+            state.CacheFresh = false;
+            if (state.Assets != null)
+            {
+                return false;
+            }
+
+            state.CacheFresh = MaidAssetCache.IsFresh(state.Save);
+            state.CacheFreshKnown = true;
+            return !state.CacheFresh;
         }
 
         public bool TryPlaceAt(string id, Vector3 feet, float yaw)
         {
             EnsureLoaded();
-            MaidInstanceState state = FindState(id);
+            MaidInstanceState state;
+            if (!TryResolvePlacement(id, feet, out state, out feet))
+            {
+                return false;
+            }
+
+            if (state.Assets == null)
+            {
+                state.Assets = MaidLoader.Load(state.Save, TakeCacheFresh(state));
+            }
+
+            return PlaceLoaded(state, feet, yaw);
+        }
+
+        public IEnumerator PlaceAtRoutine(string id, Vector3 feet, float yaw, Action<bool> completed)
+        {
+            bool reported = false;
+            IEnumerator routine = PlaceAtRoutineCore(id, feet, yaw, result =>
+            {
+                reported = true;
+                if (completed != null)
+                {
+                    completed(result);
+                }
+            }, LoadingScreen.PlaceJob);
+            yield return RunPlacementSafely(routine, () =>
+            {
+                if (!reported && completed != null)
+                {
+                    completed(false);
+                }
+            });
+        }
+
+        static IEnumerator RunPlacementSafely(IEnumerator routine, Action failed)
+        {
+            while (true)
+            {
+                bool moved;
+                try
+                {
+                    moved = routine.MoveNext();
+                }
+                catch (Exception error)
+                {
+                    Debug.LogError("放置女仆失败: " + error);
+                    if (failed != null)
+                    {
+                        failed();
+                    }
+
+                    yield break;
+                }
+
+                if (!moved)
+                {
+                    yield break;
+                }
+
+                yield return routine.Current;
+            }
+        }
+
+        IEnumerator PlaceAtRoutineCore(string id, Vector3 feet, float yaw, Action<bool> completed, string loadingJob)
+        {
+            EnsureLoaded();
+            MaidInstanceState state;
+            if (!TryResolvePlacement(id, feet, out state, out feet))
+            {
+                if (completed != null)
+                {
+                    completed(false);
+                }
+
+                yield break;
+            }
+
+            if (state.Assets == null)
+            {
+                bool cacheFresh = TakeCacheFresh(state);
+                MaidAssets loaded = null;
+                yield return MaidAssetLoader.LoadRoutine(state.Save, cacheFresh, value => loaded = value,
+                    (value, label) =>
+                    {
+                        if (!string.IsNullOrEmpty(loadingJob))
+                        {
+                            LoadingScreen.Report(loadingJob, value, label);
+                        }
+                    });
+
+                if (loaded == null || loaded.Root == null)
+                {
+                    if (completed != null)
+                    {
+                        completed(false);
+                    }
+
+                    yield break;
+                }
+
+                loaded.Root.SetActive(false);
+                state.Assets = loaded;
+            }
+
+            yield return null;
+            bool placed = PlaceLoaded(state, feet, yaw);
+            if (completed != null)
+            {
+                completed(placed);
+            }
+        }
+
+        bool TryResolvePlacement(string id, Vector3 feet, out MaidInstanceState state, out Vector3 snappedFeet)
+        {
+            state = FindState(id);
+            snappedFeet = feet;
             if (state == null)
             {
                 return false;
@@ -253,16 +384,23 @@ namespace MaidHome.Gameplay.Maid
                 return false;
             }
 
-            // 位置对齐到格中心，避免看起来卡在格子边缘
-            feet = view.CellFeet(cell);
+            snappedFeet = view.CellFeet(cell);
+            return true;
+        }
 
-            if (state.Assets == null)
+        static bool TakeCacheFresh(MaidInstanceState state)
+        {
+            bool fresh = state.CacheFreshKnown && state.CacheFresh;
+            state.CacheFreshKnown = false;
+            state.CacheFresh = false;
+            return fresh;
+        }
+
+        bool PlaceLoaded(MaidInstanceState state, Vector3 feet, float yaw)
+        {
+            if (state.Assets == null || state.Assets.Root == null)
             {
-                state.Assets = MaidLoader.Load(state.Save);
-                if (state.Assets == null)
-                {
-                    return false;
-                }
+                return false;
             }
 
             GameObject root = MaidPlacement.Place(state.Assets, feet, Quaternion.Euler(0f, yaw, 0f));
@@ -479,7 +617,8 @@ namespace MaidHome.Gameplay.Maid
                     Debug.LogWarning("女仆存档位置不可走，已移到最近的格子: " + maid.Name);
                 }
 
-                TryPlaceAt(maid.Id, feet, record.RotationY);
+                yield return RunPlacementSafely(
+                    PlaceAtRoutineCore(maid.Id, feet, record.RotationY, null, LoadingScreen.MaidJob), null);
                 LoadingScreen.Report(LoadingScreen.MaidJob, (i + 1f) / Mathf.Max(1f, pending.Count));
                 if (i + 1 < pending.Count)
                 {

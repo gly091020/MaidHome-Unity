@@ -49,6 +49,7 @@ namespace MaidHome.Core.UI
             public string Label;
             public float Weight;
             public float Progress;
+            public float TimeoutSeconds;
         }
 
         public static LoadingScreen Instance { get; private set; }
@@ -74,21 +75,21 @@ namespace MaidHome.Core.UI
             }
         }
 
-        public static void Register(string key, float weight, string label)
+        public static void Register(string key, float weight, string label, float timeoutSeconds = -1f)
         {
             LoadingScreen screen = Ensure();
             if (screen != null)
             {
-                screen.RegisterJob(key, weight, label);
+                screen.RegisterJob(key, weight, label, timeoutSeconds);
             }
         }
 
         /// <summary>一个 job 内部的进度（0~1），不报也没关系，完成时算 1</summary>
-        public static void Report(string key, float progress)
+        public static void Report(string key, float progress, string label = null)
         {
             if (Instance != null)
             {
-                Instance.ReportJob(key, progress);
+                Instance.ReportJob(key, progress, label);
             }
         }
 
@@ -151,14 +152,28 @@ namespace MaidHome.Core.UI
                     StartCoroutine(FinishRoutine());
                 }
             }
-            else if (Time.unscaledTime - _shownAt > Mathf.Max(1f, _timeoutSeconds))
+            else if (Time.unscaledTime - _shownAt > JobTimeout())
             {
-                Debug.LogWarning("加载超过 " + _timeoutSeconds + " 秒还没结束，先放行（剩下的继续在后台跑）");
+                Debug.LogWarning("加载超过 " + JobTimeout() + " 秒还没结束，先放行（剩下的继续在后台跑）");
                 StartCoroutine(FinishRoutine());
             }
         }
 
-        void RegisterJob(string key, float weight, string label)
+        float JobTimeout()
+        {
+            float timeout = _timeoutSeconds;
+            for (int i = 0; i < _jobs.Count; i++)
+            {
+                if (_jobs[i].Progress < 1f && _jobs[i].TimeoutSeconds > timeout)
+                {
+                    timeout = _jobs[i].TimeoutSeconds;
+                }
+            }
+
+            return Mathf.Max(1f, timeout);
+        }
+
+        void RegisterJob(string key, float weight, string label, float timeoutSeconds)
         {
             if (string.IsNullOrEmpty(key))
             {
@@ -186,15 +201,20 @@ namespace MaidHome.Core.UI
             job.Weight = Mathf.Max(0.01f, weight);
             job.Label = label;
             job.Progress = 0f;
+            job.TimeoutSeconds = timeoutSeconds;
             Show();
         }
 
-        void ReportJob(string key, float progress)
+        void ReportJob(string key, float progress, string label)
         {
             Job job = Find(key);
             if (job != null)
             {
                 job.Progress = Mathf.Clamp01(progress);
+                if (!string.IsNullOrEmpty(label))
+                {
+                    job.Label = label;
+                }
             }
         }
 

@@ -143,6 +143,11 @@ namespace MaidHome.Core.Rendering
 
         double ResolveTick(DateTime utcNow)
         {
+            if (_settings.AlwaysDay)
+            {
+                return 6000d;
+            }
+
             if (_settings.DayNight == DayNightMode.RealTime)
             {
                 return MinecraftDayNight.FromLocalTime(DateTime.Now);

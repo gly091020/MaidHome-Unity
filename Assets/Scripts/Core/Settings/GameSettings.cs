@@ -50,6 +50,10 @@ namespace MaidHome.Core.Settings
             Section = "世界设置")]
         public DayNightMode DayNight = DayNightMode.Minecraft;
 
+        [Setting("终为白日", "开启后固定为 MC 正午；关闭后恢复当前昼夜时间", 76,
+            Section = "世界设置")]
+        public bool AlwaysDay;
+
         public long DayNightAnchorUtcTicks;
         public long DayNightAnchorDay;
         public float DayNightAnchorTick;
@@ -67,7 +71,7 @@ namespace MaidHome.Core.Settings
             Section = "AI 聊天")]
         public AiChatSite AiSite = AiChatSite.DeepSeek;
 
-        [Setting("AI Key", "只保存在本机设置，不随女仆档案传输", 81, Secret = true,
+        [Setting("AI Key", "只保存在本机设置，不随女仆档案传输；手机端明文显示以便粘贴", 81, Secret = true,
             Section = "AI 聊天")]
         public string AiApiKey = "";
 

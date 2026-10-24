@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using MaidHome.Core.Save;
 using MaidHome.Gameplay.Maid;
@@ -41,6 +42,8 @@ namespace MaidHome.Gameplay.Ar
         string _selectedId = "";
         bool _placed;
         ARCameraManager _cameraManager;
+        ARSessionState _lastUnavailableState;
+        bool _hasUnavailableState;
 
         void Awake()
         {
@@ -100,6 +103,8 @@ namespace MaidHome.Gameplay.Ar
             {
                 _cameraManager.frameReceived += OnCameraFrame;
             }
+
+            ARSession.stateChanged += OnArStateChanged;
         }
 
         void OnDisable()
@@ -126,6 +131,8 @@ namespace MaidHome.Gameplay.Ar
             {
                 _cameraManager.frameReceived -= OnCameraFrame;
             }
+
+            ARSession.stateChanged -= OnArStateChanged;
         }
 
         void Start()
@@ -144,6 +151,7 @@ namespace MaidHome.Gameplay.Ar
                 Debug.LogWarning("AR 场景里不该有 MaidManager：AR 的女仆不进存档，两套状态一起跑会打架", this);
             }
 
+            StartCoroutine(CheckArAvailabilityRoutine());
             RefreshCandidates();
         }
 
@@ -408,6 +416,76 @@ namespace MaidHome.Gameplay.Ar
                 _sun.intensity = Mathf.Lerp(_sunMinIntensity, _sunMaxIntensity,
                     Mathf.Clamp01(brightness.Value));
             }
+        }
+
+        IEnumerator CheckArAvailabilityRoutine()
+        {
+            yield return ARSession.CheckAvailability();
+
+            float deadline = Time.unscaledTime + 8f;
+            while ((ARSession.state == ARSessionState.None
+                    || ARSession.state == ARSessionState.CheckingAvailability)
+                && Time.unscaledTime < deadline)
+            {
+                yield return null;
+            }
+
+            ARSessionState state = ARSession.state;
+            if (state == ARSessionState.None || state == ARSessionState.CheckingAvailability)
+            {
+                ShowUnavailable(ARSessionState.None,
+                    "AR 可用性检查超时。请确认设备支持 AR，并且已安装 Google Play Services for AR。");
+                yield break;
+            }
+
+            HandleArState(state);
+        }
+
+        void OnArStateChanged(ARSessionStateChangedEventArgs args)
+        {
+            HandleArState(args.state);
+        }
+
+        void HandleArState(ARSessionState state)
+        {
+            if (state == ARSessionState.Unsupported || state == ARSessionState.NeedsInstall)
+            {
+                if (_hasUnavailableState && _lastUnavailableState == state)
+                {
+                    return;
+                }
+
+                string message = state == ARSessionState.NeedsInstall
+                    ? "这台设备支持 AR，但还没有安装 Google Play Services for AR。安装后才能使用 AR 女仆。"
+                    : "当前设备不支持 AR，或 ARCore 没有启用/安装。AR 女仆功能无法使用。";
+                ShowUnavailable(state, message);
+                return;
+            }
+
+            if (state == ARSessionState.Ready || state == ARSessionState.SessionInitializing
+                || state == ARSessionState.SessionTracking)
+            {
+                _hasUnavailableState = false;
+                if (_panel != null)
+                {
+                    _panel.HideAvailability();
+                }
+            }
+        }
+
+        void ShowUnavailable(ARSessionState state, string message)
+        {
+            _hasUnavailableState = true;
+            _lastUnavailableState = state;
+            if (_panel != null)
+            {
+                _panel.ShowAvailability(message);
+                _panel.SetStatus(state == ARSessionState.NeedsInstall
+                    ? "AR 还缺少 Google Play Services for AR"
+                    : "AR 不可用");
+            }
+
+            Debug.LogWarning("AR 不可用：" + state, this);
         }
     }
 }

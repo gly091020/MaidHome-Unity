@@ -971,8 +971,10 @@ namespace MaidHome.Core.Settings
 
             if (attribute.Secret)
             {
-                input.contentType = InputField.ContentType.Password;
-                input.asteriskChar = '●';
+                // Android 的密码键盘常常禁用粘贴；Key 需要允许从密码管理器/剪贴板粘贴。
+                input.contentType = InputField.ContentType.Standard;
+                input.characterValidation = InputField.CharacterValidation.None;
+                input.lineType = InputField.LineType.SingleLine;
             }
 
             input.onEndEdit.AddListener(valueText =>

@@ -61,6 +61,8 @@ namespace MaidHome.Gameplay.Ar
         readonly List<MaidSaveData> _candidates = new List<MaidSaveData>();
         string _selectedId = "";
         RectTransform _barRect;
+        GameObject _availabilityRoot;
+        Text _availabilityMessage;
 
         void Awake()
         {
@@ -208,6 +210,43 @@ namespace MaidHome.Gameplay.Ar
             if (_statusText != null)
             {
                 _statusText.text = text;
+            }
+        }
+
+        /// <summary>AR 不可用时盖住整个 AR 面板；即使场景后来换成自定义 UI，这个提醒也照常生成。</summary>
+        public void ShowAvailability(string message)
+        {
+            EnsureEventSystem();
+            Canvas canvas = GetComponentInParent<Canvas>();
+            if (canvas == null)
+            {
+                canvas = CreateCanvas();
+            }
+
+            if (_availabilityRoot == null)
+            {
+                BuildAvailabilityDialog(canvas);
+            }
+
+            if (_availabilityRoot == null)
+            {
+                return;
+            }
+
+            if (_availabilityMessage != null)
+            {
+                _availabilityMessage.text = message;
+            }
+
+            _availabilityRoot.SetActive(true);
+            _availabilityRoot.transform.SetAsLastSibling();
+        }
+
+        public void HideAvailability()
+        {
+            if (_availabilityRoot != null)
+            {
+                _availabilityRoot.SetActive(false);
             }
         }
 
@@ -404,6 +443,81 @@ namespace MaidHome.Gameplay.Ar
             return rect.GetComponent<Button>();
         }
 
+        void BuildAvailabilityDialog(Canvas canvas)
+        {
+            _availabilityRoot = new GameObject("AR Unavailable Dialog",
+                typeof(RectTransform), typeof(Image));
+            RectTransform rootRect = _availabilityRoot.GetComponent<RectTransform>();
+            rootRect.SetParent(canvas.transform, false);
+            rootRect.anchorMin = Vector2.zero;
+            rootRect.anchorMax = Vector2.one;
+            rootRect.offsetMin = Vector2.zero;
+            rootRect.offsetMax = Vector2.zero;
+            Image overlay = _availabilityRoot.GetComponent<Image>();
+            overlay.color = new Color(0f, 0f, 0f, 0.72f);
+            overlay.raycastTarget = true;
+
+            GameObject card = new GameObject("Card", typeof(RectTransform), typeof(Image));
+            RectTransform cardRect = card.GetComponent<RectTransform>();
+            cardRect.SetParent(rootRect, false);
+            cardRect.anchorMin = new Vector2(0.5f, 0.5f);
+            cardRect.anchorMax = new Vector2(0.5f, 0.5f);
+            cardRect.pivot = new Vector2(0.5f, 0.5f);
+            RectTransform canvasRect = canvas.transform as RectTransform;
+            float availableWidth = canvasRect != null && canvasRect.rect.width > 1f
+                ? canvasRect.rect.width
+                : Screen.width;
+            float availableHeight = canvasRect != null && canvasRect.rect.height > 1f
+                ? canvasRect.rect.height
+                : Screen.height;
+            float cardWidth = Mathf.Min(760f, Mathf.Max(320f, availableWidth - 80f));
+            float cardHeight = Mathf.Min(360f, Mathf.Max(280f, availableHeight - 120f));
+            cardRect.sizeDelta = new Vector2(cardWidth, cardHeight);
+            card.GetComponent<Image>().color = new Color(0.08f, 0.09f, 0.12f, 0.98f);
+
+            Text title = CreateText(cardRect, "Title", 40, TextAnchor.MiddleCenter);
+            RectTransform titleRect = title.rectTransform;
+            titleRect.anchorMin = new Vector2(0f, 1f);
+            titleRect.anchorMax = new Vector2(1f, 1f);
+            titleRect.pivot = new Vector2(0.5f, 1f);
+            titleRect.anchoredPosition = new Vector2(0f, -24f);
+            titleRect.sizeDelta = new Vector2(-48f, 54f);
+            title.text = "AR 不可用";
+
+            _availabilityMessage = CreateText(cardRect, "Message", 30, TextAnchor.UpperLeft);
+            _availabilityMessage.lineSpacing = 1.12f;
+            RectTransform messageRect = _availabilityMessage.rectTransform;
+            messageRect.anchorMin = Vector2.zero;
+            messageRect.anchorMax = Vector2.one;
+            messageRect.offsetMin = new Vector2(36f, 100f);
+            messageRect.offsetMax = new Vector2(-36f, -86f);
+
+            Button close = CreateButton(cardRect, "知道了", 26).GetComponent<Button>();
+            RectTransform closeRect = close.GetComponent<RectTransform>();
+            closeRect.anchorMin = new Vector2(0.5f, 0f);
+            closeRect.anchorMax = new Vector2(0.5f, 0f);
+            closeRect.pivot = new Vector2(0.5f, 0f);
+            float buttonWidth = Mathf.Clamp(cardWidth * 0.28f, 130f, 190f);
+            closeRect.anchoredPosition = new Vector2(-buttonWidth * 0.55f, 28f);
+            closeRect.sizeDelta = new Vector2(buttonWidth, 56f);
+            close.onClick.AddListener(HideAvailability);
+
+            Button exit = CreateButton(cardRect, "退出 AR", 26).GetComponent<Button>();
+            RectTransform exitRect = exit.GetComponent<RectTransform>();
+            exitRect.anchorMin = new Vector2(0.5f, 0f);
+            exitRect.anchorMax = new Vector2(0.5f, 0f);
+            exitRect.pivot = new Vector2(0.5f, 0f);
+            exitRect.anchoredPosition = new Vector2(buttonWidth * 0.55f, 28f);
+            exitRect.sizeDelta = new Vector2(buttonWidth, 56f);
+            exit.onClick.AddListener(() =>
+            {
+                HideAvailability();
+                Raise(ExitRequested);
+            });
+
+            _availabilityRoot.SetActive(false);
+        }
+
         static Canvas CreateCanvas()
         {
             GameObject canvasObject = new GameObject("AR Canvas", typeof(Canvas), typeof(CanvasScaler),
@@ -444,7 +558,7 @@ namespace MaidHome.Gameplay.Ar
             return text;
         }
 
-        static RectTransform CreateButton(RectTransform parent, string label)
+        static RectTransform CreateButton(RectTransform parent, string label, int fontSize = 20)
         {
             GameObject buttonObject = new GameObject("Button " + label, typeof(RectTransform), typeof(Image),
                 typeof(Button));
@@ -452,7 +566,7 @@ namespace MaidHome.Gameplay.Ar
             rect.SetParent(parent, false);
             buttonObject.GetComponent<Image>().color = new Color(0.25f, 0.25f, 0.3f, 1f);
 
-            Text text = CreateText(rect, "Text", 20, TextAnchor.MiddleCenter);
+            Text text = CreateText(rect, "Text", fontSize, TextAnchor.MiddleCenter);
             RectTransform textRect = text.rectTransform;
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;

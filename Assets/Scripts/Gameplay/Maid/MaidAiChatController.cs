@@ -378,7 +378,7 @@ namespace MaidHome.Gameplay.Maid
             _activeUser = null;
             string requestId = Guid.NewGuid().ToString("N");
             SetStatus("正在感受「" + item.Name + "」…");
-            BeginThinking("感受中");
+            BeginThinking("……", false);
             AiChatRequest request = MaidAiPromptBuilder.BuildPassiveLine(_record, item.EventText);
             _client.Send(request, reply =>
             {
@@ -442,12 +442,12 @@ namespace MaidHome.Gameplay.Maid
             PumpFeelingQueue();
         }
 
-        void BeginThinking(string text)
+        void BeginThinking(string text, bool animateDots = true)
         {
             _thinkingText = text;
             StopThinkingRoutine();
-            _loadingBubbleId = MaidChatBubble.ShowPersistent(_agent, text + ".");
-            _thinkingRoutine = StartCoroutine(AnimateThinking());
+            _loadingBubbleId = MaidChatBubble.ShowThinking(_agent, animateDots ? text + "." : text);
+            if (animateDots) _thinkingRoutine = StartCoroutine(AnimateThinking());
         }
 
         System.Collections.IEnumerator AnimateThinking()

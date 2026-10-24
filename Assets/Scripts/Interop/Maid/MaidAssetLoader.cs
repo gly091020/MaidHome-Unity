@@ -1,5 +1,8 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using MaidHome.Core.Storage;
 using MaidHome.Interop.Bedrock;
 using UnityEngine;
@@ -50,8 +53,13 @@ namespace MaidHome.Interop.Maid
 
         public static MaidAssets Load(MaidSaveData maid)
         {
+            return Load(maid, false);
+        }
+
+        public static MaidAssets Load(MaidSaveData maid, bool cacheFresh)
+        {
             MaidAssets cached;
-            if (MaidAssetCache.TryLoad(maid, out cached))
+            if (MaidAssetCache.TryLoad(maid, out cached, cacheFresh))
             {
                 return cached;
             }
@@ -74,17 +82,89 @@ namespace MaidHome.Interop.Maid
             return assets;
         }
 
+        /// <summary>
+        /// 放置界面用的可跨帧加载。JSON 解析和缓存写盘在线程池，Unity 对象仍只在主线程创建；
+        /// 动画烘焙按时间片让帧，避免一条 147 MB 的缓存把进度条冻住。
+        /// </summary>
+        public static IEnumerator LoadRoutine(MaidSaveData maid, bool cacheFresh,
+            Action<MaidAssets> completed, Action<float, string> progress)
+        {
+            if (progress != null)
+            {
+                progress(0.02f, cacheFresh ? "正在读取女仆缓存…" : "正在准备女仆…");
+            }
+
+            yield return null;
+            MaidAssets cached;
+            if (cacheFresh && MaidAssetCache.TryLoad(maid, out cached, true))
+            {
+                if (progress != null)
+                {
+                    progress(1f, "女仆准备好了");
+                }
+
+                if (completed != null)
+                {
+                    completed(cached);
+                }
+
+                yield break;
+            }
+
+            MaidAssets assets = new MaidAssets();
+            assets.Maid = maid;
+            yield return BuildRoutine(maid, assets, (value, label) =>
+            {
+                if (progress != null)
+                {
+                    progress(value * 0.82f, label);
+                }
+            });
+
+            if (assets.Root != null && assets.ClipData.Count > 0)
+            {
+                yield return MaidAssetCache.WriteRoutine(maid, assets, value =>
+                {
+                    if (progress != null)
+                    {
+                        progress(0.82f + value * 0.18f, "正在保存女仆缓存…");
+                    }
+                }, warning => assets.Warnings.Add(warning));
+            }
+
+            if (progress != null)
+            {
+                progress(1f, "女仆准备好了");
+            }
+
+            if (completed != null)
+            {
+                completed(assets);
+            }
+        }
+
         /// <summary>不管缓存，重新转一遍。</summary>
         public static MaidAssets Build(MaidSaveData maid)
         {
             MaidAssets assets = new MaidAssets();
             assets.Maid = maid;
+            IEnumerator routine = BuildRoutine(maid, assets, null);
+            while (routine.MoveNext())
+            {
+            }
+
+            return assets;
+        }
+
+        static IEnumerator BuildRoutine(MaidSaveData maid, MaidAssets assets,
+            Action<float, string> progress)
+        {
             float start = Time.realtimeSinceStartup;
 
             if (maid == null)
             {
                 assets.Warnings.Add("女仆数据为空");
-                return assets;
+                yield break;
             }
 
             assets.Warnings.AddRange(maid.Warnings);
@@ -92,20 +172,39 @@ namespace MaidHome.Interop.Maid
             if (string.IsNullOrEmpty(maid.ModelPath) || !File.Exists(maid.ModelPath))
             {
                 assets.Warnings.Add("没有可用的模型文件");
-                return assets;
+                yield break;
+            }
+
+            if (progress != null)
+            {
+                progress(0.02f, "正在解析模型…");
+            }
+
+            yield return null;
+            Task<BedrockGeometry> geometryTask = Task.Run(() => BedrockGeometry.ParseFile(maid.ModelPath));
+            while (!geometryTask.IsCompleted)
+            {
+                yield return null;
             }
 
             BedrockGeometry geometry;
             try
             {
-                geometry = BedrockGeometry.ParseFile(maid.ModelPath);
+                geometry = geometryTask.Result;
             }
-            catch (System.Exception error)
+            catch (Exception error)
             {
                 assets.Warnings.Add("模型解析失败: " + error.Message);
-                return assets;
+                yield break;
             }
 
+            assets.Warnings.AddRange(geometry.Warnings);
+            if (progress != null)
+            {
+                progress(0.16f, "正在构建模型…");
+            }
+
+            yield return null;
             Texture2D texture = MaidAssetCache.LoadTexture(maid.TexturePath);
             BedrockModelBuilder modelBuilder = new BedrockModelBuilder();
             modelBuilder.PixelsPerUnit = PixelsPerUnit;
@@ -119,7 +218,36 @@ namespace MaidHome.Interop.Maid
             assets.Warnings.AddRange(model.Warnings);
             ApplyModelRules(assets);
 
-            BedrockAnimationSet animations = LoadAnimations(maid, assets.Warnings);
+            if (progress != null)
+            {
+                progress(0.34f, "正在解析动画…");
+            }
+
+            yield return null;
+            BedrockAnimationSet animations = null;
+            List<string> animationWarnings = new List<string>();
+            string sharedAnimationPath = SharedAnimationPath();
+            Task animationTask = Task.Run(() =>
+                animations = LoadAnimations(maid, animationWarnings, sharedAnimationPath));
+            while (!animationTask.IsCompleted)
+            {
+                yield return null;
+            }
+
+            try
+            {
+                if (animationTask.IsFaulted)
+                {
+                    throw animationTask.Exception;
+                }
+            }
+            catch (Exception error)
+            {
+                assets.Warnings.Add("动画解析失败: " + error.GetBaseException().Message);
+                yield break;
+            }
+
+            assets.Warnings.AddRange(animationWarnings);
             BedrockAnimationClipBuilder clipBuilder = new BedrockAnimationClipBuilder();
             clipBuilder.PixelsPerUnit = PixelsPerUnit;
             clipBuilder.SampleRate = SampleRate;
@@ -129,6 +257,7 @@ namespace MaidHome.Interop.Maid
             HashSet<string> parallelBones = CollectParallelBones(animations.Animations);
 
             int emptyClips = 0;
+            float sliceStart = Time.realtimeSinceStartup;
             for (int i = 0; i < animations.Animations.Count; i++)
             {
                 BedrockAnimation animation = animations.Animations[i];
@@ -143,6 +272,18 @@ namespace MaidHome.Interop.Maid
                     : ParallelBonesExcluding(parallelBones, animation);
                 BedrockClipData data = clipBuilder.BuildData(animation, geometry);
                 assets.ClipData.Add(data);
+
+                if (Time.realtimeSinceStartup - sliceStart >= 0.012f)
+                {
+                    if (progress != null)
+                    {
+                        progress(0.4f + 0.6f * (i + 1f) / Math.Max(1, animations.Animations.Count),
+                            "正在烘焙动画 " + (i + 1) + "/" + animations.Animations.Count + "…");
+                    }
+
+                    yield return null;
+                    sliceStart = Time.realtimeSinceStartup;
+                }
             }
 
             if (emptyClips > 0)
@@ -151,7 +292,10 @@ namespace MaidHome.Interop.Maid
             }
 
             assets.BuildSeconds = Time.realtimeSinceStartup - start;
-            return assets;
+            if (progress != null)
+            {
+                progress(1f, "动画烘焙完成");
+            }
         }
 
         /// <summary>所有 pre_parallel 动画动过的骨骼，去重后的并集。</summary>
@@ -241,20 +385,19 @@ namespace MaidHome.Interop.Maid
             }
         }
 
-        static BedrockAnimationSet LoadAnimations(MaidSaveData maid, List<string> warnings)
+        static BedrockAnimationSet LoadAnimations(MaidSaveData maid, List<string> warnings, string sharedPath)
         {
             BedrockAnimationSet merged = new BedrockAnimationSet();
 
             if (MergeSharedAnimations)
             {
-                string shared = SharedAnimationPath();
-                if (File.Exists(shared))
+                if (File.Exists(sharedPath))
                 {
-                    Merge(merged, BedrockAnimationSet.ParseFile(shared), warnings);
+                    Merge(merged, BedrockAnimationSet.ParseFile(sharedPath), warnings);
                 }
                 else
                 {
-                    warnings.Add("没找到共用的动画文件: " + shared);
+                    warnings.Add("没找到共用的动画文件: " + sharedPath);
                 }
             }
 

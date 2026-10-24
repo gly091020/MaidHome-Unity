@@ -45,22 +45,22 @@ Shader "MaidHome/MinecraftSkybox"
 
             sampler2D _SunTex;
             sampler2D _MoonTex;
-            fixed4 _TopColor;
-            fixed4 _HorizonColor;
-            fixed4 _GroundColor;
-            fixed4 _SunColor;
-            fixed4 _MoonColor;
-            fixed4 _StarColor;
+            float4 _TopColor;
+            float4 _HorizonColor;
+            float4 _GroundColor;
+            float4 _SunColor;
+            float4 _MoonColor;
+            float4 _StarColor;
             float4 _SunDirection;
             float4 _MoonDirection;
-            half _SunSize;
-            half _MoonPhase;
-            half _MoonSpriteSize;
+            float _SunSize;
+            float _MoonPhase;
+            float _MoonSpriteSize;
             float _CelestialAngle;
-            half _NightAmount;
-            half _StarAmount;
-            half _Exponent;
-            half _OrthoSpread;
+            float _NightAmount;
+            float _StarAmount;
+            float _Exponent;
+            float _OrthoSpread;
 
             struct appdata
             {
@@ -94,15 +94,15 @@ Shader "MaidHome/MinecraftSkybox"
                     : float3(0.0, 1.0, 0.0);
             }
 
-            half2 celestial_uv(float3 dir, float3 axis, half halfSize, out half inside)
+            float2 celestial_uv(float3 dir, float3 axis, float halfSize, out float inside)
             {
-                half facing = saturate((half)dot(dir, axis));
+                float facing = saturate(dot(dir, axis));
                 float3 up = celestial_up(axis);
                 float3 right = normalize(cross(up, axis));
                 float3 tangent = normalize(cross(axis, right));
                 float2 offset = float2(dot(dir, right), dot(dir, tangent))
-                    / max((float)facing, 0.0001);
-                half2 uv = offset / max(halfSize * 2.0, 0.0001) + 0.5;
+                    / max(facing, 0.0001);
+                float2 uv = offset / max(halfSize * 2.0, 0.0001) + 0.5;
                 inside = step(0.0, uv.x) * step(uv.x, 1.0)
                        * step(0.0, uv.y) * step(uv.y, 1.0)
                        * step(0.0001, facing);
@@ -116,7 +116,7 @@ Shader "MaidHome/MinecraftSkybox"
                 return frac((value.x + value.y) * value.z);
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            float4 frag (v2f i) : SV_Target
             {
                 // 正交相机所有视线平行，"按视线方向取色"本来是没有意义的：Unity 依然把天空盒
                 // 当盒子画，盒子的顶点方向在屏幕上从上到下穿过正负值，dir.y=0 那条线正好落在屏幕
@@ -140,35 +140,35 @@ Shader "MaidHome/MinecraftSkybox"
                 }
 
                 // 这段计算保持旧 shader 原样，贴图只往后叠加。
-                half up = dir.y;
-                half t = pow(saturate(up), _Exponent);
-                fixed3 sky = lerp(_HorizonColor.rgb, _TopColor.rgb, t);
-                fixed3 below = lerp(_HorizonColor.rgb, _GroundColor.rgb, saturate(-up * 3.0));
-                fixed3 col = lerp(below, sky, step(0.0, up));
+                float up = dir.y;
+                float t = pow(saturate(up), _Exponent);
+                float3 sky = lerp(_HorizonColor.rgb, _TopColor.rgb, t);
+                float3 below = lerp(_HorizonColor.rgb, _GroundColor.rgb, saturate(-up * 3.0));
+                float3 col = lerp(below, sky, step(0.0, up));
 
                 float3 sunDir = normalize(_SunDirection.xyz);
-                half sunVisible = smoothstep(-0.03, 0.05, sunDir.y);
+                float sunVisible = smoothstep(-0.03, 0.05, sunDir.y);
 
                 // 旧圆盘的边缘角度换算成贴图半宽，尺寸与旧版太阳保持一致。
-                half sunCos = max(1.0 - _SunSize, 0.001);
-                half sunHalfSize = sqrt(max(1.0 - sunCos * sunCos, 0.0)) / sunCos;
-                half sunInside;
-                half2 sunUv = celestial_uv(dir, sunDir, sunHalfSize, sunInside);
-                fixed4 sunSprite = tex2D(_SunTex, sunUv);
-                half sunAmount = sunSprite.a * sunInside * sunVisible;
+                float sunCos = max(1.0 - _SunSize, 0.001);
+                float sunHalfSize = sqrt(max(1.0 - sunCos * sunCos, 0.0)) / sunCos;
+                float sunInside;
+                float2 sunUv = celestial_uv(dir, sunDir, sunHalfSize, sunInside);
+                float4 sunSprite = tex2D(_SunTex, sunUv);
+                float sunAmount = sunSprite.a * sunInside * sunVisible;
                 col = lerp(col, sunSprite.rgb, sunAmount);
 
                 float3 moonDir = normalize(_MoonDirection.xyz);
-                half moonVisible = smoothstep(-0.03, 0.05, moonDir.y);
-                half moonInside;
-                half2 moonLocalUv = celestial_uv(dir, moonDir, _MoonSpriteSize, moonInside);
-                int moonPhase = max(0, min(7, (int)round(_MoonPhase)));
-                int moonCol = moonPhase % 4;
-                int moonRow = moonPhase / 4;
-                half2 moonUv = half2((moonCol + moonLocalUv.x) * 0.25,
-                    (1 - moonRow + moonLocalUv.y) * 0.5);
-                fixed4 moonSprite = tex2D(_MoonTex, moonUv);
-                half moonAmount = moonSprite.a * moonInside * moonVisible;
+                float moonVisible = smoothstep(-0.03, 0.05, moonDir.y);
+                float moonInside;
+                float2 moonLocalUv = celestial_uv(dir, moonDir, _MoonSpriteSize, moonInside);
+                float moonPhase = clamp(_MoonPhase, 0.0, 7.0);
+                float moonRow = step(3.5, moonPhase);
+                float moonCol = moonPhase - moonRow * 4.0;
+                float2 moonUv = float2((moonCol + moonLocalUv.x) * 0.25,
+                    (1.0 - moonRow + moonLocalUv.y) * 0.5);
+                float4 moonSprite = tex2D(_MoonTex, moonUv);
+                float moonAmount = moonSprite.a * moonInside * moonVisible;
                 col = lerp(col, moonSprite.rgb * _MoonColor.rgb, moonAmount);
 
                 // 星星是固定分布的像素方点；用立方体六面各自成格，避免方向格被拉成菱形。
@@ -196,18 +196,18 @@ Shader "MaidHome/MinecraftSkybox"
                 }
 
                 float2 starGrid = (starFaceUv * 0.5 + 0.5) * 384.0;
-                float2 starCell = floor(starGrid);
+                float2 starCell = starGrid - frac(starGrid);
                 float2 starLocal = frac(starGrid);
                 float3 starSeed = float3(starFace * 31.0 + starCell.x, starCell.y, 7.0);
-                half star = step(0.9983, star_hash(starSeed));
-                half starSquare = step(abs(starLocal.x - 0.5), 0.17)
+                float star = step(0.9983, star_hash(starSeed));
+                float starSquare = step(abs(starLocal.x - 0.5), 0.17)
                                  * step(abs(starLocal.y - 0.5), 0.17);
-                half starBrightness = lerp(0.62, 1.0, star_hash(starSeed + 19.0));
-                half starsVisible = smoothstep(0.02, 0.22, up)
-                                  * _NightAmount * _StarAmount;
+                float starBrightness = lerp(0.62, 1.0, star_hash(starSeed + 19.0));
+                float starsVisible = smoothstep(0.02, 0.22, up)
+                                   * _NightAmount * _StarAmount;
                 col += _StarColor.rgb * star * starSquare * starBrightness * starsVisible;
 
-                return fixed4(col, 1);
+                return float4(col, 1.0);
             }
             ENDCG
         }

@@ -51,6 +51,8 @@ namespace MaidHome.Gameplay.Maid
         const int BodyPixels = 24;
         const int TailPixels = 16;
         const int SourceWidth = 48;
+        // TLM 把 Util.getMillis() % 3600 直接当角度用：1000 毫秒 = 1000 度
+        const float ThinkingSpinDegreesPerSecond = 1000f;
 
         enum BubblePosition
         {
@@ -66,6 +68,7 @@ namespace MaidHome.Gameplay.Maid
             public Image Body;
             public Image Tail;
             public Text Text;
+            public Image ThinkingIcon;
             public float ExpireAt;
             public float AnchorTop;
             public float ExtentPixels;
@@ -84,6 +87,7 @@ namespace MaidHome.Gameplay.Maid
         Sprite _tailLeft;
         Sprite _tailRight;
         Sprite _tailCenter;
+        Sprite _thinkingSprite;
         Material _overlayMaterial;
         bool _spritesReady;
         int _sequence;
@@ -109,7 +113,13 @@ namespace MaidHome.Gameplay.Maid
         public static int ShowPersistent(MaidAgent maid, string line)
         {
             if (maid == null || string.IsNullOrEmpty(line)) return 0;
-            return Instance.BeginPersistent(maid, line);
+            return Instance.BeginPersistent(maid, line, false);
+        }
+
+        public static int ShowThinking(MaidAgent maid, string line)
+        {
+            if (maid == null || string.IsNullOrEmpty(line)) return 0;
+            return Instance.BeginPersistent(maid, line, true);
         }
 
         public static void UpdatePersistent(MaidAgent maid, int id, string line)
@@ -201,7 +211,7 @@ namespace MaidHome.Gameplay.Maid
             Relayout(list);
         }
 
-        int BeginPersistent(MaidAgent maid, string line)
+        int BeginPersistent(MaidAgent maid, string line, bool thinking)
         {
             EnsureSprites();
             if (_bodySprite == null) return 0;
@@ -213,7 +223,7 @@ namespace MaidHome.Gameplay.Maid
             }
 
             if (list.Count >= MaxBubbles) Remove(list, Earliest(list));
-            Bubble bubble = Create(maid, line);
+            Bubble bubble = Create(maid, line, thinking);
             bubble.Id = _nextBubbleId++;
             bubble.Persistent = true;
             bubble.ExpireAt = float.PositiveInfinity;
@@ -242,7 +252,14 @@ namespace MaidHome.Gameplay.Maid
             }
 
             bubble.Text.text = line;
+            bubble.Text.fontStyle = FontStyle.Normal;
+            bubble.Text.color = Color.black;
             bubble.Persistent = false;
+            if (bubble.ThinkingIcon != null)
+            {
+                bubble.ThinkingIcon.gameObject.SetActive(false);
+                bubble.ThinkingIcon = null;
+            }
             bubble.ExpireAt = Time.unscaledTime + Mathf.Max(_minSeconds, seconds > 0f ? seconds : DefaultSeconds);
             List<Bubble> list;
             if (_byMaid.TryGetValue(maid, out list)) Relayout(list);
@@ -270,7 +287,7 @@ namespace MaidHome.Gameplay.Maid
             return null;
         }
 
-        Bubble Create(MaidAgent maid, string line)
+        Bubble Create(MaidAgent maid, string line, bool thinking = false)
         {
             GameObject root = new GameObject("ChatBubble", typeof(Canvas));
             Canvas canvas = root.GetComponent<Canvas>();
@@ -285,7 +302,17 @@ namespace MaidHome.Gameplay.Maid
             bubble.Body = CreateImage(rootRect, "Body", _bodySprite);
             bubble.Body.type = Image.Type.Sliced;
             bubble.Tail = CreateImage(rootRect, "Tail", _tailLeft);
+            if (thinking && _thinkingSprite != null)
+            {
+                bubble.ThinkingIcon = CreateImage(bubble.Body.rectTransform, "Thinking", _thinkingSprite);
+            }
+
             bubble.Text = CreateText(bubble.Body.rectTransform, line);
+            if (thinking)
+            {
+                bubble.Text.fontStyle = FontStyle.Italic;
+                bubble.Text.color = new Color(0.4f, 0.4f, 0.4f, 1f);
+            }
             bubble.AnchorTop = MeasureAnchorTop(maid);
             return bubble;
         }
@@ -374,6 +401,11 @@ namespace MaidHome.Gameplay.Maid
                     Transform root = bubble.Root.transform;
                     root.SetPositionAndRotation(anchor, rotation);
                     root.localScale = localScale;
+                    if (bubble.ThinkingIcon != null)
+                    {
+                        float angle = Mathf.Repeat(Time.unscaledTime * ThinkingSpinDegreesPerSecond, 360f);
+                        bubble.ThinkingIcon.rectTransform.localRotation = Quaternion.Euler(0f, 0f, angle);
+                    }
                 }
             }
         }
@@ -421,7 +453,8 @@ namespace MaidHome.Gameplay.Maid
             float toPixels = Mathf.Max(0.0001f, bubble.Text.pixelsPerUnit) * ui;
             float textWidth = Mathf.Max(1f, Mathf.Ceil(MeasureWrappedWidth(bubble.Text, wrapWidth) / toPixels));
             float textHeight = Mathf.Max(FontPixels, Mathf.Ceil(bubble.Text.preferredHeight / toPixels));
-            float bodyWidth = textWidth + PadPixels * 2f;
+            float iconSpace = bubble.ThinkingIcon != null ? 18f : 0f;
+            float bodyWidth = textWidth + PadPixels * 2f + iconSpace;
             float bodyHeight = textHeight + PadPixels * 2f;
 
             float bodyX;
@@ -450,12 +483,24 @@ namespace MaidHome.Gameplay.Maid
             bodyRect.sizeDelta = new Vector2(bodyWidth * ui, bodyHeight * ui);
             bodyRect.anchoredPosition = new Vector2(bodyX * ui, stackY * ui);
 
+            if (bubble.ThinkingIcon != null)
+            {
+                RectTransform iconRect = bubble.ThinkingIcon.rectTransform;
+                iconRect.anchorMin = new Vector2(0f, 1f);
+                iconRect.anchorMax = new Vector2(0f, 1f);
+                iconRect.pivot = new Vector2(0.5f, 0.5f);
+                iconRect.sizeDelta = new Vector2(16f * ui, 16f * ui);
+                iconRect.anchoredPosition = new Vector2(
+                    (PadPixels + 8f) * ui,
+                    -bodyHeight * ui * 0.5f);
+            }
+
             bubble.Tail.sprite = tail;
             RectTransform tailRect = bubble.Tail.rectTransform;
             tailRect.sizeDelta = new Vector2(TailPixels * ui, TailPixels * ui);
             tailRect.anchoredPosition = new Vector2(tailX * ui, (stackY - TailPixels * 0.5f) * ui);
 
-            textRect.anchoredPosition = new Vector2(PadPixels * ui, -PadPixels * ui);
+            textRect.anchoredPosition = new Vector2((PadPixels + iconSpace) * ui, -PadPixels * ui);
             textRect.sizeDelta = new Vector2(wrapWidth, textHeight * ui);
 
             // 给"取景适配"用：这条气泡从挂点往外占多宽、往上顶多高（单位还是气泡像素）
@@ -626,6 +671,19 @@ namespace MaidHome.Gameplay.Maid
             _tailLeft = CreateTailSprite(texture, TailPixels * 2f, top);
             _tailCenter = CreateTailSprite(texture, TailPixels, top);
             _tailRight = CreateTailSprite(texture, 0f, top);
+            Texture2D thinking = Resources.Load<Texture2D>("MaidChatBubble/yinyang_orb");
+            if (thinking != null)
+            {
+                thinking.filterMode = FilterMode.Point;
+                thinking.wrapMode = TextureWrapMode.Clamp;
+                _thinkingSprite = Sprite.Create(thinking, new Rect(0f, 0f, thinking.width, thinking.height),
+                    new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+            }
+            else
+            {
+                Debug.LogWarning("思考气泡缺少 Resources/MaidChatBubble/yinyang_orb.png", this);
+            }
+
             _spritesReady = true;
         }
 
@@ -730,10 +788,16 @@ namespace MaidHome.Gameplay.Maid
                 Destroy(_tailCenter);
             }
 
+            if (_thinkingSprite != null)
+            {
+                Destroy(_thinkingSprite);
+            }
+
             _bodySprite = null;
             _tailLeft = null;
             _tailRight = null;
             _tailCenter = null;
+            _thinkingSprite = null;
             if (_overlayMaterial != null)
             {
                 Destroy(_overlayMaterial);

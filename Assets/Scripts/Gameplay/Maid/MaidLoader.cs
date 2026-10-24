@@ -43,13 +43,18 @@ namespace MaidHome.Gameplay.Maid
 
         public static MaidAssets Load(MaidSaveData maid)
         {
+            return Load(maid, false);
+        }
+
+        public static MaidAssets Load(MaidSaveData maid, bool cacheFresh)
+        {
             if (maid == null)
             {
                 Debug.LogError("没有可加载的女仆存档");
                 return null;
             }
 
-            MaidAssets assets = MaidAssetLoader.Load(maid);
+            MaidAssets assets = MaidAssetLoader.Load(maid, cacheFresh);
             if (assets == null)
             {
                 Debug.LogError("女仆资源加载失败: " + maid.Id);

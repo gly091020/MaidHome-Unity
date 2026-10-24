@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using MaidHome.Core.Input;
@@ -555,19 +556,13 @@ namespace MaidHome.Gameplay.Bag
             bool wasVisible = _visible;
             SetVisible(false);
             IBagSlowPlacement slow = provider as IBagSlowPlacement;
+            IBagPacedPlacement paced = provider as IBagPacedPlacement;
             if (!_placement.Begin(item.Kind, item.Id, item.DisplayName,
                 slow != null && slow.NeedsLoading(item.Id),
                 (feet, yaw) =>
                 {
                     provider.TryPlaceAt(item.Id, feet, yaw);
-                    if (wasVisible)
-                    {
-                        SetVisible(true);
-                    }
-                    else
-                    {
-                        Refresh();
-                    }
+                    RestoreAfterPlacement(wasVisible);
                 },
                 () =>
                 {
@@ -575,12 +570,31 @@ namespace MaidHome.Gameplay.Bag
                     {
                         SetVisible(true);
                     }
-                }))
+                },
+                paced == null
+                    ? null
+                    : (Func<Vector3, float, IEnumerator>)((feet, yaw) =>
+                        paced.PlaceAtRoutine(item.Id, feet, yaw, placed =>
+                        {
+                            RestoreAfterPlacement(wasVisible);
+                        }))))
             {
                 if (wasVisible)
                 {
                     SetVisible(true);
                 }
+            }
+        }
+
+        void RestoreAfterPlacement(bool wasVisible)
+        {
+            if (wasVisible)
+            {
+                SetVisible(true);
+            }
+            else
+            {
+                Refresh();
             }
         }
 

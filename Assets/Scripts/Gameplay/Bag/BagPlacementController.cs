@@ -26,6 +26,7 @@ namespace MaidHome.Gameplay.Bag
         public bool IsActive { get; private set; }
 
         Action<Vector3, float> _onPlaced;
+        Func<Vector3, float, IEnumerator> _onPlacedRoutine;
         Action _onCancel;
         BagPlacementPanel _panel;
         GameObject _marker;
@@ -79,9 +80,10 @@ namespace MaidHome.Gameplay.Bag
         }
 
         public bool Begin(string kind, string id, string displayName, bool willLoad,
-            Action<Vector3, float> onPlaced, Action onCancel)
+            Action<Vector3, float> onPlaced, Action onCancel,
+            Func<Vector3, float, IEnumerator> onPlacedRoutine = null)
         {
-            if (onPlaced == null || !HouseContext.HasHouse)
+            if ((onPlaced == null && onPlacedRoutine == null) || !HouseContext.HasHouse)
             {
                 Debug.LogWarning("没有可放置的房子");
                 return false;
@@ -90,6 +92,7 @@ namespace MaidHome.Gameplay.Bag
             _placingLabel = string.IsNullOrEmpty(displayName) ? "正在放置…" : "正在放置 " + displayName + "…";
             _willLoad = willLoad;
             _onPlaced = onPlaced;
+            _onPlacedRoutine = onPlacedRoutine;
             _onCancel = onCancel;
             _yaw = 180f;
             _aiming = false;
@@ -115,6 +118,7 @@ namespace MaidHome.Gameplay.Bag
             IsActive = false;
             Action onCancel = _onCancel;
             _onPlaced = null;
+            _onPlacedRoutine = null;
             _onCancel = null;
             _aiming = false;
             _hasAim = false;
@@ -215,10 +219,11 @@ namespace MaidHome.Gameplay.Bag
         IEnumerator ConfirmRoutine()
         {
             Action<Vector3, float> callback = _onPlaced;
+            Func<Vector3, float, IEnumerator> routine = _onPlacedRoutine;
             Vector3 feet = _feet;
             float yaw = _yaw;
             Cancel(false);
-            if (callback == null)
+            if (callback == null && routine == null)
             {
                 yield break;
             }
@@ -226,13 +231,20 @@ namespace MaidHome.Gameplay.Bag
             if (_willLoad)
             {
                 // 只有真会卡住的那一下才亮进度条：缓存新鲜时几十毫秒就完了，亮一下反而是闪屏
-                LoadingScreen.Register(LoadingScreen.PlaceJob, 1f, _placingLabel);
+                LoadingScreen.Register(LoadingScreen.PlaceJob, 1f, _placingLabel, 120f);
                 yield return null;
             }
 
             try
             {
-                callback(feet, yaw);
+                if (routine != null)
+                {
+                    yield return routine(feet, yaw);
+                }
+                else
+                {
+                    callback(feet, yaw);
+                }
             }
             finally
             {

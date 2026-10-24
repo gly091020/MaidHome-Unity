@@ -1,9 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using MaidHome.Core.Json;
 using MaidHome.Core.Storage;
 using MaidHome.Interop.Bedrock;
@@ -15,17 +18,20 @@ namespace MaidHome.Interop.Maid
     /// 女仆资源缓存。把「基岩 JSON + PNG」转换出来的网格、动画烘焙结果写到
     /// persistentDataPath/cache/maid/&lt;uuid&gt;/(maid.bin + manifest.json + texture.png)，
     /// 下次直接读缓存，不用再解析、再烘一遍。缓存是可再生的中间产物，删了大不了重转一次。
-    /// manifest 里存源文件的 sha256，源文件一变就重转。
+    /// manifest 里存源文件的时间戳/大小快照，源文件一变就重转；sha256 只留作诊断。
     /// </summary>
     public static class MaidAssetCache
     {
         // 5: Molang 补了 q.anim_time 简写（酒狐的挥雪球动画用它），已烘的采样得重来一遍
         // 4: 主动画不再写 pre_parallel 独占的骨骼（尾巴/长发），常驻层只烘它自己动的骨骼；
         //    3 及以前是全骨骼铺满的，常驻层会互相盖成静止姿势，必须重转
-        public const int FormatVersion = 5;
+        // 6: manifest 增加快速源文件 stamp；旧缓存没有 stamp，会平稳重建一次
+        public const int FormatVersion = 6;
         const string BinName = "maid.bin";
+        const string TempSuffix = ".tmp";
         const string ManifestName = "manifest.json";
         const string TextureName = "texture.png";
+        const int WriteBufferSize = 1024 * 1024;
 
         public static string FolderOf(MaidSaveData maid)
         {
@@ -112,6 +118,11 @@ namespace MaidHome.Interop.Maid
                 return false;
             }
 
+            if (manifest["stamp"].AsString("") != SourceStamp(sources))
+            {
+                return false;
+            }
+
             for (int i = 0; i < sources.Count; i++)
             {
                 JsonValue entry = saved[i];
@@ -120,7 +131,7 @@ namespace MaidHome.Interop.Maid
                     return false;
                 }
 
-                if (entry["sha256"].AsString("") != FileHash(sources[i].Value))
+                if (entry["bytes"].AsInt(-1) != new FileInfo(sources[i].Value).Length)
                 {
                     return false;
                 }
@@ -131,29 +142,67 @@ namespace MaidHome.Interop.Maid
 
         public static void Write(MaidSaveData maid, MaidAssets assets)
         {
-            string folder = FolderOf(maid);
-            AppPaths.EnsureDirectory(folder);
-
-            // 按需加载的动画是从旧文件里读的，必须在删旧文件之前先读出来
-            for (int i = 0; i < assets.ClipData.Count; i++)
-            {
-                assets.ClipData[i].EnsureTracks();
-            }
-
-            if (File.Exists(BinPath(maid)))
-            {
-                File.Delete(BinPath(maid));
-            }
-
-            WriteBin(BinPath(maid), maid, assets);
-            CopyTexture(maid);
-            WriteManifest(maid, assets);
+            EnsureTracks(assets);
+            WriteSnapshot(maid, CaptureSnapshot(maid, assets), null);
         }
 
-        public static bool TryLoad(MaidSaveData maid, out MaidAssets assets)
+        /// <summary>
+        /// 后台写缓存。抓取 Transform/Mesh 的副本必须先在主线程做完，之后几十 MB 的
+        /// BinaryWriter 序列化和 SHA-256 都交给线程池，进度条可以继续刷新。
+        /// </summary>
+        public static IEnumerator WriteRoutine(MaidSaveData maid, MaidAssets assets,
+            Action<float> progress, Action<string> failed)
+        {
+            EnsureTracks(assets);
+            CacheSnapshot snapshot = CaptureSnapshot(maid, assets);
+            Exception error = null;
+            int reported = 0;
+            Task task = Task.Run(() =>
+            {
+                try
+                {
+                    WriteSnapshot(maid, snapshot, value =>
+                    {
+                        Volatile.Write(ref reported, Math.Max(0, Math.Min(1000, (int)(value * 1000f))));
+                    });
+                }
+                catch (Exception exception)
+                {
+                    Volatile.Write(ref error, exception);
+                }
+            });
+
+            while (!task.IsCompleted)
+            {
+                if (progress != null)
+                {
+                    progress(Volatile.Read(ref reported) / 1000f);
+                }
+
+                yield return null;
+            }
+
+            Exception failure = Volatile.Read(ref error);
+            if (failure != null)
+            {
+                if (failed != null)
+                {
+                    failed("写缓存失败: " + failure.Message);
+                }
+
+                yield break;
+            }
+
+            if (progress != null)
+            {
+                progress(1f);
+            }
+        }
+
+        public static bool TryLoad(MaidSaveData maid, out MaidAssets assets, bool freshnessChecked = false)
         {
             assets = null;
-            if (!IsFresh(maid))
+            if (!freshnessChecked && !IsFresh(maid))
             {
                 return false;
             }
@@ -180,61 +229,175 @@ namespace MaidHome.Interop.Maid
             }
         }
 
+        // Unity 的 Transform/Mesh 只能在主线程抓，抓成纯数据后再交给后台线程写盘。
+        sealed class CacheSnapshot
+        {
+            public string RootName;
+            public List<TransformSnapshot> Transforms;
+            public List<BedrockClipData> Clips;
+            public int KeyframeCount;
+        }
+
+        sealed class TransformSnapshot
+        {
+            public string Name;
+            public string Path;
+            public int ParentIndex;
+            public Vector3 LocalPosition;
+            public Quaternion LocalRotation;
+            public Vector3 LocalScale;
+            public MeshSnapshot Mesh;
+        }
+
+        sealed class MeshSnapshot
+        {
+            public Vector3[] Vertices;
+            public Vector3[] Normals;
+            public Vector2[] Uvs;
+            public int[] Triangles;
+        }
+
         // ---------------------------------------------------------------- 二进制
 
-        static void WriteBin(string path, MaidSaveData maid, MaidAssets assets)
+        static void EnsureTracks(MaidAssets assets)
         {
-            using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write))
+            // 按需加载的动画是从旧文件里读的，必须在覆盖旧文件之前先读出来
+            for (int i = 0; i < assets.ClipData.Count; i++)
+            {
+                assets.ClipData[i].EnsureTracks();
+            }
+        }
+
+        static CacheSnapshot CaptureSnapshot(MaidSaveData maid, MaidAssets assets)
+        {
+            CacheSnapshot snapshot = new CacheSnapshot();
+            snapshot.RootName = assets.Root != null ? assets.Root.name : maid.Name;
+            snapshot.Clips = new List<BedrockClipData>(assets.ClipData);
+
+            List<Transform> transforms = new List<Transform>();
+            CollectTransforms(assets.Root != null ? assets.Root.transform : null, transforms);
+            Dictionary<Transform, int> indexes = new Dictionary<Transform, int>(transforms.Count);
+            for (int i = 0; i < transforms.Count; i++)
+            {
+                indexes[transforms[i]] = i;
+            }
+
+            snapshot.Transforms = new List<TransformSnapshot>(transforms.Count);
+            for (int i = 0; i < transforms.Count; i++)
+            {
+                Transform transform = transforms[i];
+                TransformSnapshot bone = new TransformSnapshot();
+                bone.Name = transform.name;
+                bone.Path = RelativePath(transform, assets.Root.transform);
+                bone.ParentIndex = transform.parent != null && indexes.TryGetValue(transform.parent, out int parent)
+                    ? parent
+                    : -1;
+                bone.LocalPosition = transform.localPosition;
+                bone.LocalRotation = transform.localRotation;
+                bone.LocalScale = transform.localScale;
+
+                MeshFilter filter = transform.GetComponent<MeshFilter>();
+                Mesh mesh = filter == null ? null : filter.sharedMesh;
+                if (mesh != null)
+                {
+                    bone.Mesh = new MeshSnapshot();
+                    bone.Mesh.Vertices = mesh.vertices;
+                    bone.Mesh.Normals = mesh.normals;
+                    bone.Mesh.Uvs = mesh.uv;
+                    bone.Mesh.Triangles = mesh.triangles;
+                }
+
+                snapshot.Transforms.Add(bone);
+            }
+
+            snapshot.KeyframeCount = CountKeyframes(assets);
+            return snapshot;
+        }
+
+        static void WriteSnapshot(MaidSaveData maid, CacheSnapshot snapshot, Action<float> progress)
+        {
+            string folder = FolderOf(maid);
+            AppPaths.EnsureDirectory(folder);
+            if (progress != null)
+            {
+                progress(0f);
+            }
+
+            string binPath = BinPath(maid);
+            string tempBin = binPath + TempSuffix;
+            if (File.Exists(tempBin))
+            {
+                File.Delete(tempBin);
+            }
+
+            WriteBin(tempBin, snapshot, progress);
+            ReplaceFile(tempBin, binPath);
+            CopyTexture(maid);
+            if (progress != null)
+            {
+                progress(0.96f);
+            }
+
+            WriteManifest(maid, snapshot);
+            if (progress != null)
+            {
+                progress(1f);
+            }
+        }
+
+        static void WriteBin(string path, CacheSnapshot snapshot, Action<float> progress)
+        {
+            using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None,
+                WriteBufferSize, FileOptions.SequentialScan))
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.Write(FormatVersion);
-                writer.Write(assets.Root != null ? assets.Root.name : maid.Name);
+                writer.Write(snapshot.RootName ?? "");
 
-                List<Transform> transforms = new List<Transform>();
-                CollectTransforms(assets.Root != null ? assets.Root.transform : null, transforms);
-                writer.Write(transforms.Count);
-                for (int i = 0; i < transforms.Count; i++)
+                writer.Write(snapshot.Transforms.Count);
+                for (int i = 0; i < snapshot.Transforms.Count; i++)
                 {
-                    Transform transform = transforms[i];
-                    writer.Write(transform.name);
-                    writer.Write(RelativePath(transform, assets.Root.transform));
-                    writer.Write(transforms.IndexOf(transform.parent));
-                    writer.Write(transform.localPosition.x);
-                    writer.Write(transform.localPosition.y);
-                    writer.Write(transform.localPosition.z);
-                    writer.Write(transform.localRotation.x);
-                    writer.Write(transform.localRotation.y);
-                    writer.Write(transform.localRotation.z);
-                    writer.Write(transform.localRotation.w);
-                    writer.Write(transform.localScale.x);
-                    writer.Write(transform.localScale.y);
-                    writer.Write(transform.localScale.z);
+                    TransformSnapshot transform = snapshot.Transforms[i];
+                    writer.Write(transform.Name ?? "");
+                    writer.Write(transform.Path ?? "");
+                    writer.Write(transform.ParentIndex);
+                    writer.Write(transform.LocalPosition.x);
+                    writer.Write(transform.LocalPosition.y);
+                    writer.Write(transform.LocalPosition.z);
+                    writer.Write(transform.LocalRotation.x);
+                    writer.Write(transform.LocalRotation.y);
+                    writer.Write(transform.LocalRotation.z);
+                    writer.Write(transform.LocalRotation.w);
+                    writer.Write(transform.LocalScale.x);
+                    writer.Write(transform.LocalScale.y);
+                    writer.Write(transform.LocalScale.z);
 
-                    MeshFilter filter = transform.GetComponent<MeshFilter>();
-                    Mesh mesh = filter == null ? null : filter.sharedMesh;
-                    writer.Write(mesh != null);
-                    if (mesh == null)
+                    writer.Write(transform.Mesh != null);
+                    if (transform.Mesh == null)
                     {
                         continue;
                     }
 
-                    WriteVector3Array(writer, mesh.vertices);
-                    WriteVector3Array(writer, mesh.normals);
-                    WriteVector2Array(writer, mesh.uv);
-                    int[] triangles = mesh.triangles;
+                    WriteVector3Array(writer, transform.Mesh.Vertices);
+                    WriteVector3Array(writer, transform.Mesh.Normals);
+                    WriteVector2Array(writer, transform.Mesh.Uvs);
+                    int[] triangles = transform.Mesh.Triangles;
                     writer.Write(triangles.Length);
                     for (int t = 0; t < triangles.Length; t++)
                     {
                         writer.Write(triangles[t]);
                     }
+
+                    if (progress != null)
+                    {
+                        progress(0.45f * (i + 1f) / Math.Max(1, snapshot.Transforms.Count));
+                    }
                 }
 
-                writer.Write(assets.ClipData.Count);
-                for (int i = 0; i < assets.ClipData.Count; i++)
+                writer.Write(snapshot.Clips.Count);
+                for (int i = 0; i < snapshot.Clips.Count; i++)
                 {
-                    BedrockClipData clip = assets.ClipData[i];
-                    // 按需加载的缓存对象也能安全地再写一遍
-                    clip.EnsureTracks();
+                    BedrockClipData clip = snapshot.Clips[i];
                     writer.Write(clip.Name);
                     writer.Write(clip.Length);
                     writer.Write((int)clip.WrapMode);
@@ -270,6 +433,11 @@ namespace MaidHome.Interop.Maid
                             writer.Write(track.Scales[k].y);
                             writer.Write(track.Scales[k].z);
                         }
+                    }
+
+                    if (progress != null)
+                    {
+                        progress(0.45f + 0.5f * (i + 1f) / Math.Max(1, snapshot.Clips.Count));
                     }
                 }
             }
@@ -764,7 +932,15 @@ namespace MaidHome.Interop.Maid
                 return;
             }
 
-            File.Copy(maid.TexturePath, Path.Combine(FolderOf(maid), TextureName), true);
+            string destination = Path.Combine(FolderOf(maid), TextureName);
+            string temp = destination + TempSuffix;
+            if (File.Exists(temp))
+            {
+                File.Delete(temp);
+            }
+
+            File.Copy(maid.TexturePath, temp, true);
+            ReplaceFile(temp, destination);
         }
 
         public static Texture2D LoadTexture(string path)
@@ -781,7 +957,7 @@ namespace MaidHome.Interop.Maid
             return texture;
         }
 
-        static void WriteManifest(MaidSaveData maid, MaidAssets assets)
+        static void WriteManifest(MaidSaveData maid, CacheSnapshot snapshot)
         {
             List<KeyValuePair<string, string>> sources = Sources(maid);
             StringBuilder text = new StringBuilder();
@@ -790,8 +966,9 @@ namespace MaidHome.Interop.Maid
             text.Append("  \"maid\": ").Append(Quote(maid.Id)).Append(",\n");
             text.Append("  \"name\": ").Append(Quote(maid.Name)).Append(",\n");
             text.Append("  \"built\": ").Append(Quote(System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))).Append(",\n");
-            text.Append("  \"counts\": {\"bones\": ").Append(CountTransforms(assets)).Append(", \"clips\": ")
-                .Append(assets.ClipData.Count).Append(", \"keyframes\": ").Append(CountKeyframes(assets)).Append("},\n");
+            text.Append("  \"stamp\": ").Append(Quote(SourceStamp(sources))).Append(",\n");
+            text.Append("  \"counts\": {\"bones\": ").Append(snapshot.Transforms.Count).Append(", \"clips\": ")
+                .Append(snapshot.Clips.Count).Append(", \"keyframes\": ").Append(snapshot.KeyframeCount).Append("},\n");
             text.Append("  \"sources\": [");
             for (int i = 0; i < sources.Count; i++)
             {
@@ -804,12 +981,45 @@ namespace MaidHome.Interop.Maid
 
             text.Append(sources.Count > 0 ? "\n  ]\n" : "]\n");
             text.Append("}\n");
-            File.WriteAllText(ManifestPath(maid), text.ToString(), new UTF8Encoding(false));
+            string destination = ManifestPath(maid);
+            string temp = destination + TempSuffix;
+            File.WriteAllText(temp, text.ToString(), new UTF8Encoding(false));
+            ReplaceFile(temp, destination);
         }
 
-        static int CountTransforms(MaidAssets assets)
+        static string SourceStamp(List<KeyValuePair<string, string>> sources)
         {
-            return assets.Root == null ? 0 : assets.Root.GetComponentsInChildren<Transform>(true).Length;
+            StringBuilder text = new StringBuilder();
+            for (int i = 0; i < sources.Count; i++)
+            {
+                FileInfo info = new FileInfo(sources[i].Value);
+                text.Append(sources[i].Key).Append('|')
+                    .Append(info.Name).Append('|')
+                    .Append(info.Length).Append('|')
+                    .Append(info.LastWriteTimeUtc.Ticks).Append('\n');
+            }
+
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(text.ToString()));
+                StringBuilder stamp = new StringBuilder(hash.Length * 2);
+                for (int i = 0; i < hash.Length; i++)
+                {
+                    stamp.Append(hash[i].ToString("x2"));
+                }
+
+                return stamp.ToString();
+            }
+        }
+
+        static void ReplaceFile(string source, string destination)
+        {
+            if (File.Exists(destination))
+            {
+                File.Delete(destination);
+            }
+
+            File.Move(source, destination);
         }
 
         static int CountKeyframes(MaidAssets assets)

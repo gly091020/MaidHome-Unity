@@ -278,6 +278,11 @@ namespace MaidHome.EditorTools
                 return 0d;
             }
 
+            if (_settings.AlwaysDay)
+            {
+                return 6000d;
+            }
+
             if (_settings.DayNight == DayNightMode.RealTime)
             {
                 return MinecraftDayNight.FromLocalTime(DateTime.Now);
