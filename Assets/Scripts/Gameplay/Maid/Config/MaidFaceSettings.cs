@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace MaidHome.Gameplay.Maid
 {
-    /// <summary>摸脸交互的可调参数。场景里的 Interaction 会优先读这份配置，没接配置时继续用脚本上的原字段。</summary>
+    /// <summary>摸脸交互的可调参数。Interaction 直接从这份配置读取；没接配置会报错。</summary>
     [CreateAssetMenu(menuName = "MaidHome/设置/摸脸交互", fileName = "MaidFaceSettings")]
     public sealed class MaidFaceSettings : ScriptableObject
     {
@@ -60,5 +60,270 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _milestoneTopRatio = 0.12f;
         [SerializeField] private float _comboParticleScale = 2f;
         [SerializeField] private float _comboScale = 1.45f;
+        public float EarRollDegrees
+        {
+            get { return _earRollDegrees; }
+        }
+
+        public float EarPitchDegrees
+        {
+            get { return _earPitchDegrees; }
+        }
+
+        public float EarTwistDegrees
+        {
+            get { return _earTwistDegrees; }
+        }
+
+        public float EarDragResponse
+        {
+            get { return _earDragResponse; }
+        }
+
+        public float EarStretchStart
+        {
+            get { return _earStretchStart; }
+        }
+
+        public float EarStretchFull
+        {
+            get { return _earStretchFull; }
+        }
+
+        public float EarStretchMax
+        {
+            get { return _earStretchMax; }
+        }
+
+        public float EarDamageStretch
+        {
+            get { return _earDamageStretch; }
+        }
+
+        public float FaceDragStartRatio
+        {
+            get { return _faceDragStartRatio; }
+        }
+
+        public float FaceDragMaxYaw
+        {
+            get { return _faceDragMaxYaw; }
+        }
+
+        public float FaceDragMaxPitch
+        {
+            get { return _faceDragMaxPitch; }
+        }
+
+        public float FaceDragDamageAngle
+        {
+            get { return _faceDragDamageAngle; }
+        }
+
+        public float FaceDragReturnSpeed
+        {
+            get { return _faceDragReturnSpeed; }
+        }
+
+        public float SlapMinDistance
+        {
+            get { return _slapMinDistance; }
+        }
+
+        public float SlapMaxSeconds
+        {
+            get { return _slapMaxSeconds; }
+        }
+
+        public float SlapMinSpeed
+        {
+            get { return _slapMinSpeed; }
+        }
+
+        public float SlapHorizontalRatio
+        {
+            get { return _slapHorizontalRatio; }
+        }
+
+        public float SlapRepeatDelay
+        {
+            get { return _slapRepeatDelay; }
+        }
+
+        public float ComboTimeoutSeconds
+        {
+            get { return _comboTimeoutSeconds; }
+        }
+
+        public int ComboMilestoneStep
+        {
+            get { return _comboMilestoneStep; }
+        }
+
+        public float SlapYawDegrees
+        {
+            get { return _slapYawDegrees; }
+        }
+
+        public float SlapRollDegrees
+        {
+            get { return _slapRollDegrees; }
+        }
+
+        public float SlapVolume
+        {
+            get { return _slapVolume; }
+        }
+
+        public AudioClip MilestoneClip
+        {
+            get { return _milestoneClip; }
+        }
+
+        public float EyeYawDegrees
+        {
+            get { return _eyeYawDegrees; }
+        }
+
+        public float EyePitchDegrees
+        {
+            get { return _eyePitchDegrees; }
+        }
+
+        public float CheekYawDegrees
+        {
+            get { return _cheekYawDegrees; }
+        }
+
+        public float CheekPitchDegrees
+        {
+            get { return _cheekPitchDegrees; }
+        }
+
+        public float TapMaxSeconds
+        {
+            get { return _tapMaxSeconds; }
+        }
+
+        public float TapSlopPixels
+        {
+            get { return _tapSlopPixels; }
+        }
+
+        public float PokeCooldownSeconds
+        {
+            get { return _pokeCooldownSeconds; }
+        }
+
+        public float PokeReactionCooldownSeconds
+        {
+            get { return _pokeReactionCooldownSeconds; }
+        }
+
+        public float HitPaddingPixels
+        {
+            get { return _hitPaddingPixels; }
+        }
+
+        public float EarZoneScale
+        {
+            get { return _earZoneScale; }
+        }
+
+        public Vector2 FaceEyeUvMin
+        {
+            get { return _faceEyeUvMin; }
+        }
+
+        public Vector2 FaceEyeUvSize
+        {
+            get { return _faceEyeUvSize; }
+        }
+
+        public float FacePixels
+        {
+            get { return _facePixels; }
+        }
+
+        public float TurnSeconds
+        {
+            get { return _turnSeconds; }
+        }
+
+        public float VoiceVolume
+        {
+            get { return _voiceVolume; }
+        }
+
+        public Color FlashColor
+        {
+            get { return _flashColor; }
+        }
+
+        public float FlashSeconds
+        {
+            get { return _flashSeconds; }
+        }
+
+        public float LineSeconds
+        {
+            get { return _lineSeconds; }
+        }
+
+        public float ComplainCooldownSeconds
+        {
+            get { return _complainCooldownSeconds; }
+        }
+
+        public float SlapLineCooldownSeconds
+        {
+            get { return _slapLineCooldownSeconds; }
+        }
+
+        public bool ShowZones
+        {
+            get { return _showZones; }
+        }
+
+        public bool SlapOnly
+        {
+            get { return _slapOnly; }
+        }
+
+        public bool MaskBlocksEyes
+        {
+            get { return _maskBlocksEyes; }
+        }
+
+        public float ComboSizeRatio
+        {
+            get { return _comboSizeRatio; }
+        }
+
+        public float ComboTopRatio
+        {
+            get { return _comboTopRatio; }
+        }
+
+        public float MilestoneSizeRatio
+        {
+            get { return _milestoneSizeRatio; }
+        }
+
+        public float MilestoneTopRatio
+        {
+            get { return _milestoneTopRatio; }
+        }
+
+        public float ComboParticleScale
+        {
+            get { return _comboParticleScale; }
+        }
+
+        public float ComboScale
+        {
+            get { return _comboScale; }
+        }
+
     }
 }

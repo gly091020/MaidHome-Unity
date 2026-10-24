@@ -5,7 +5,7 @@ using UnityEngine.UI;
 namespace MaidHome.Gameplay.Maid
 {
     /// <summary>
-    /// 「玩全身」底栏：只放操作提示和「退出」。
+    /// 「玩全身」底栏：操作提示、体感开关、视角调整和「退出」。
     /// 想用自定义 UI 就接 Bar / Hint Text / Exit Button，不接就运行时自动生成一条。
     /// </summary>
     [DisallowMultipleComponent]
@@ -13,8 +13,9 @@ namespace MaidHome.Gameplay.Maid
     {
         public event Action ExitRequested;
         public event Action MotionToggleRequested;
+        public event Action ViewToggleRequested;
 
-        [SerializeField] private string _hint = "按住身上任意部位拖动；松手后她会自然倒下，「退出」还原站姿";
+        [SerializeField] private string _hint = "按住身体拖动；「调整视角」后可拖动屏幕旋转镜头";
 
         [Header("自定义 UI（不接就自动生成一条）")]
         [Tooltip("底栏根节点，Show/Hide 只开关它，布局不动")]
@@ -25,13 +26,17 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private Button _exitButton;
         [Tooltip("「体感」开关按钮；自定义 UI 不接就没有这个开关")]
         [SerializeField] private Button _motionButton;
+        [Tooltip("「调整视角」开关按钮；自定义 UI 不接就没有这个开关")]
+        [SerializeField] private Button _viewButton;
 
         bool _generated;
         bool _motionOn;
+        bool _viewOn;
         RectTransform _barRect;
         RectTransform _hintRect;
         RectTransform _exitRect;
         RectTransform _motionRect;
+        RectTransform _viewRect;
 
         public bool IsVisible { get; private set; }
 
@@ -73,6 +78,7 @@ namespace MaidHome.Gameplay.Maid
             }
 
             UpdateMotionText();
+            UpdateViewText();
         }
 
         public void Hide()
@@ -96,8 +102,14 @@ namespace MaidHome.Gameplay.Maid
                 _motionButton.onClick.RemoveListener(OnMotionClicked);
             }
 
+            if (_viewButton != null)
+            {
+                _viewButton.onClick.RemoveListener(OnViewClicked);
+            }
+
             ExitRequested = null;
             MotionToggleRequested = null;
+            ViewToggleRequested = null;
         }
 
         void Build()
@@ -117,6 +129,12 @@ namespace MaidHome.Gameplay.Maid
             {
                 _motionButton.onClick.RemoveListener(OnMotionClicked);
                 _motionButton.onClick.AddListener(OnMotionClicked);
+            }
+
+            if (_viewButton != null)
+            {
+                _viewButton.onClick.RemoveListener(OnViewClicked);
+                _viewButton.onClick.AddListener(OnViewClicked);
             }
         }
 
@@ -156,6 +174,8 @@ namespace MaidHome.Gameplay.Maid
             _exitButton = _exitRect.GetComponent<Button>();
             _motionRect = CreateButton(_barRect, "体感：关");
             _motionButton = _motionRect.GetComponent<Button>();
+            _viewRect = CreateButton(_barRect, "调整视角");
+            _viewButton = _viewRect.GetComponent<Button>();
 
             _generated = true;
             _bar.SetActive(false);
@@ -165,26 +185,32 @@ namespace MaidHome.Gameplay.Maid
         {
             RectTransform parent = _barRect.parent as RectTransform;
             float available = parent != null && parent.rect.width > 1f ? parent.rect.width : 1080f;
-            float width = Mathf.Clamp(available * 0.92f, 420f, 1100f);
+            float width = Mathf.Clamp(available * 0.94f, 620f, 1180f);
             const float height = 92f;
 
             _barRect.sizeDelta = new Vector2(width, height);
             _barRect.anchoredPosition = new Vector2(0f, 32f);
 
-            _hintRect.sizeDelta = new Vector2(width - 400f, 54f);
+            _hintRect.sizeDelta = new Vector2(width - 560f, 54f);
             _hintRect.anchoredPosition = new Vector2(24f, 18f);
 
             _exitRect.anchorMin = new Vector2(1f, 0f);
             _exitRect.anchorMax = new Vector2(1f, 0f);
             _exitRect.pivot = new Vector2(1f, 0f);
-            _exitRect.sizeDelta = new Vector2(150f, 54f);
-            _exitRect.anchoredPosition = new Vector2(-24f, 18f);
+            _exitRect.sizeDelta = new Vector2(140f, 54f);
+            _exitRect.anchoredPosition = new Vector2(-20f, 18f);
 
             _motionRect.anchorMin = new Vector2(1f, 0f);
             _motionRect.anchorMax = new Vector2(1f, 0f);
             _motionRect.pivot = new Vector2(1f, 0f);
-            _motionRect.sizeDelta = new Vector2(190f, 54f);
-            _motionRect.anchoredPosition = new Vector2(-186f, 18f);
+            _motionRect.sizeDelta = new Vector2(160f, 54f);
+            _motionRect.anchoredPosition = new Vector2(-172f, 18f);
+
+            _viewRect.anchorMin = new Vector2(1f, 0f);
+            _viewRect.anchorMax = new Vector2(1f, 0f);
+            _viewRect.pivot = new Vector2(1f, 0f);
+            _viewRect.sizeDelta = new Vector2(170f, 54f);
+            _viewRect.anchoredPosition = new Vector2(-344f, 18f);
         }
 
         public void SetMotion(bool on)
@@ -198,6 +224,20 @@ namespace MaidHome.Gameplay.Maid
             if (_motionButton != null)
             {
                 _motionButton.interactable = available;
+            }
+        }
+
+        public void SetView(bool on)
+        {
+            _viewOn = on;
+            UpdateViewText();
+        }
+
+        public void SetViewAvailable(bool available)
+        {
+            if (_viewButton != null)
+            {
+                _viewButton.interactable = available;
             }
         }
 
@@ -223,6 +263,20 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
+        void UpdateViewText()
+        {
+            if (_viewButton == null)
+            {
+                return;
+            }
+
+            Text label = _viewButton.GetComponentInChildren<Text>();
+            if (label != null)
+            {
+                label.text = _viewOn ? "返回拖拽" : "调整视角";
+            }
+        }
+
         void OnExitClicked()
         {
             if (ExitRequested != null)
@@ -236,6 +290,14 @@ namespace MaidHome.Gameplay.Maid
             if (MotionToggleRequested != null)
             {
                 MotionToggleRequested();
+            }
+        }
+
+        void OnViewClicked()
+        {
+            if (ViewToggleRequested != null)
+            {
+                ViewToggleRequested();
             }
         }
 

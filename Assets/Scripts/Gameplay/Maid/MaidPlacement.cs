@@ -99,6 +99,11 @@ namespace MaidHome.Gameplay.Maid
             agent.Id = assets.Maid != null ? assets.Maid.Id : "";
             agent.Save = assets.Maid;
 
+            if (root.GetComponent<MaidAiChatController>() == null)
+            {
+                root.AddComponent<MaidAiChatController>();
+            }
+
             // 她身上挂着的东西（现在只有示众牌）随存档一起回来
             if (agent.Save != null)
             {

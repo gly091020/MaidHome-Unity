@@ -31,7 +31,7 @@ namespace MaidHome.Gameplay.Maid
 
         public event Action Ended;
 
-        [Header("配置（接了就覆盖下面的默认参数）")]
+        [Header("配置（留空自动读取 Resources/Settings；指定则优先）")]
         [SerializeField] private MaidFeedSettings _settings;
 
         [Header("吃东西")]
@@ -196,9 +196,73 @@ namespace MaidHome.Gameplay.Maid
         float _eatReturnTime;
         float _lastFeedTime = -100f;
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                _settings = Resources.Load<MaidFeedSettings>("Settings/MaidFeedSettings");
+            }
+
+            if (_settings == null)
+            {
+                Debug.LogError("MaidFeedInteraction 没有挂 MaidFeedSettings，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _eatClip = _settings.EatClip;
+            _begClip = _settings.BegClip;
+            _clipFadeSeconds = _settings.ClipFadeSeconds;
+            _eatMaxSeconds = _settings.EatMaxSeconds;
+            _eatSoundDelay = _settings.EatSoundDelay;
+            _soundVolume = _settings.SoundVolume;
+            _eatSounds = _settings.EatSounds;
+            _cakePrefab = _settings.CakePrefab;
+            _cakeHitSound = _settings.CakeHitSound;
+            _particleTexture = _settings.ParticleTexture;
+            _particleMaterial = _settings.ParticleMaterial;
+            _feedOrthographicSize = _settings.FeedOrthographicSize;
+            _particleCount = _settings.ParticleCount;
+            _particleLifetime = _settings.ParticleLifetime;
+            _particleSpeed = _settings.ParticleSpeed;
+            _particleSize = _settings.ParticleSize;
+            _particleColor = _settings.ParticleColor;
+            _particleOffset = _settings.ParticleOffset;
+            _particleDelay = _settings.ParticleDelay;
+            _particleGravity = _settings.ParticleGravity;
+            _voiceEvent = _settings.VoiceEvent;
+            _voiceDelay = _settings.VoiceDelay;
+            _lineSeconds = _settings.LineSeconds;
+            _lines = _settings.Lines;
+            _defaultLevel = _settings.DefaultLevel;
+            _feedCooldownSeconds = _settings.FeedCooldownSeconds;
+            _cakeStartViewportY = _settings.CakeStartViewportY;
+            _cakeStartDepth = _settings.CakeStartDepth;
+            _cakeFlySeconds = _settings.CakeFlySeconds;
+            _cakeSpinDegrees = _settings.CakeSpinDegrees;
+            _maxThrownCakes = _settings.MaxThrownCakes;
+            _heavyFlySeconds = _settings.HeavyFlySeconds;
+            _heavyHitSound = _settings.HeavyHitSound;
+            _heavyTwistDegrees = _settings.HeavyTwistDegrees;
+            _heavyTwistPitchDegrees = _settings.HeavyTwistPitchDegrees;
+            _heavyTwistSeconds = _settings.HeavyTwistSeconds;
+            _heavyVoiceEvent = _settings.HeavyVoiceEvent;
+            _heavyLines = _settings.HeavyLines;
+            _comboTimeoutSeconds = _settings.ComboTimeoutSeconds;
+            _comboMilestoneStep = _settings.ComboMilestoneStep;
+            _milestoneClip = _settings.MilestoneClip;
+            _comboParticleScale = _settings.ComboParticleScale;
+            _comboScale = _settings.ComboScale;
+            _cakeFlashColor = _settings.CakeFlashColor;
+            _cakeFlashSeconds = _settings.CakeFlashSeconds;
+            _cakeVoiceEvent = _settings.CakeVoiceEvent;
+            _cakeLines = _settings.CakeLines;
+            _simpleEatSeconds = _settings.SimpleEatSeconds;
+
+            return true;
+        }
         void Awake()
         {
-            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidFeedInteraction");
+            ApplySettings();
         }
 
         public bool Supports(MaidAgent agent)
@@ -455,6 +519,7 @@ namespace MaidHome.Gameplay.Maid
             }
 
             PlayHurtAnimation();
+            MaidAiChatController.ReportPhysicalHit(_agent, "cake");
 
             if (heavy && canHurt)
             {

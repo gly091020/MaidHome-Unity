@@ -25,6 +25,8 @@ namespace MaidHome.Core.Settings
         public bool Slider { get; set; }
         /// <summary>滑动条/输入框后缀，例如 "%"。</summary>
         public string Suffix { get; set; }
+        /// <summary>输入框按密码显示。</summary>
+        public bool Secret { get; set; }
         /// <summary>枚举值的显示名；为空就显示 enum 原名。</summary>
         public string[] EnumLabels { get; set; }
         /// <summary>分组标题，例如「声音设置」。</summary>

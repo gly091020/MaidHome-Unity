@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using MaidHome.Core.Save;
 using MaidHome.Core.Storage;
+using MaidHome.Interop.Ai;
 using MaidHome.Interop.House;
 using MaidHome.Interop.Maid;
 
@@ -16,6 +17,7 @@ namespace MaidHome.Interop.Portal
     {
         /// <summary>MC 侧序列化的女仆数据，发送时唯一要传的文件。</summary>
         public const string MaidDataFileName = "maid_data.maid";
+        public const string AiChatFileName = AiChatStore.FileName;
 
         public static string StagingRoot
         {
@@ -144,6 +146,17 @@ namespace MaidHome.Interop.Portal
             {
                 reason = "缺 " + MaidDataFileName;
                 return false;
+            }
+
+            string aiPath = Path.Combine(maid.Folder, AiChatFileName);
+            if (File.Exists(aiPath))
+            {
+                string aiError;
+                if (!AiChatStore.ValidateCompressedFile(aiPath, out aiError))
+                {
+                    reason = "AI 聊天数据损坏: " + aiError;
+                    return false;
+                }
             }
 
             MaidWorldRecord record = MaidWorldSaveStore.Load().Find(maid.Id);
@@ -296,6 +309,12 @@ namespace MaidHome.Interop.Portal
             package.Name = DisplayNameOf(maid.Id, maid.Name);
             package.Root = maid.Folder;
             package.Files.Add(MaidDataFileName);
+            string aiPath = Path.Combine(maid.Folder, AiChatFileName);
+            if (File.Exists(aiPath))
+            {
+                package.Files.Add(AiChatFileName);
+                package.DataJson = "{\"ai_chat_schema\":1}";
+            }
             return package;
         }
 

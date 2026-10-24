@@ -33,7 +33,7 @@ namespace MaidHome.Gameplay.Maid
 
         public event Action Ended;
 
-        [Header("配置（接了就覆盖下面的默认参数）")]
+        [Header("配置（留空自动读取 Resources/Settings；指定则优先）")]
         [SerializeField] private MaidGroomingSettings _settings;
 
         /// <summary>照抄模组 GroomingBrushState.FAVOR_TICKS：有效接触 400 tick = 20 秒</summary>
@@ -201,9 +201,48 @@ namespace MaidHome.Gameplay.Maid
         MaidWanderer _wanderer;
         CharacterController _controller;
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                _settings = Resources.Load<MaidGroomingSettings>("Settings/MaidGroomingSettings");
+            }
+
+            if (_settings == null)
+            {
+                Debug.LogError("MaidGroomingInteraction 没有挂 MaidGroomingSettings，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _earHitScale = _settings.EarHitScale;
+            _maxDragWorld = _settings.MaxDragWorld;
+            _grainOnHair = _settings.GrainOnHair;
+            _comfortCooldown = _settings.ComfortCooldown;
+            _againstCooldown = _settings.AgainstCooldown;
+            _lineSeconds = _settings.LineSeconds;
+            _earPressOnTouch = _settings.EarPressOnTouch;
+            _lieDown = _settings.LieDown;
+            _lieTiltDegrees = _settings.LieTiltDegrees;
+            _lieLift = _settings.LieLift;
+            _lieGroundClearance = _settings.LieGroundClearance;
+            _sleepClip = _settings.SleepClip;
+            _lieDelaySeconds = _settings.LieDelaySeconds;
+            _turnBackSeconds = _settings.TurnBackSeconds;
+            _focusTailToo = _settings.FocusTailToo;
+            _tailSensitivity = _settings.TailSensitivity;
+            _tailDragPixels = _settings.TailDragPixels;
+            _flashColor = _settings.FlashColor;
+            _flashSeconds = _settings.FlashSeconds;
+            _voiceVolume = _settings.VoiceVolume;
+            _cheerSeconds = _settings.CheerSeconds;
+            _cheerSoundId = _settings.CheerSoundId;
+            _showDebug = _settings.ShowDebug;
+
+            return true;
+        }
         void Awake()
         {
-            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidGroomingInteraction");
+            ApplySettings();
         }
 
         /// <summary>这个女仆能不能梳毛（认得出头发 / 耳朵 / 头顶 / 尾巴之一就行）</summary>

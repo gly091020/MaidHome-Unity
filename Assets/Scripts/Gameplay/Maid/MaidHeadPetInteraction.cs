@@ -23,6 +23,7 @@ namespace MaidHome.Gameplay.Maid
 
         public event Action Ended;
 
+        [Tooltip("留空自动读取 Resources/Settings/MaidHeadPetConfig；指定则优先")]
         [SerializeField] private MaidHeadPetConfig _config;
         [SerializeField] private MaidHeadPetPanel _panel;
 
@@ -114,9 +115,15 @@ namespace MaidHome.Gameplay.Maid
         {
             if (_config == null)
             {
-                Debug.LogError("MaidHeadPetInteraction 没有挂 MaidHeadPetConfig，"
-                    + "请把 Assets/Resources/Settings/MaidHeadPetConfig 拖到 Config 字段", this);
+                _config = Resources.Load<MaidHeadPetConfig>("Settings/MaidHeadPetConfig");
             }
+
+            if (_config == null)
+            {
+                Debug.LogError("MaidHeadPetInteraction 没有挂 MaidHeadPetConfig，"
+                    + "也没有找到 Assets/Resources/Settings/MaidHeadPetConfig", this);
+            }
+            _cfg = _config;
         }
 
         public bool Supports(MaidAgent agent)

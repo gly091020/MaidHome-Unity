@@ -10,7 +10,7 @@ namespace MaidHome.Core.Settings
     /// <summary>config/settings.json 的读写；坏档退回默认值，写盘先写 .tmp 再替换。</summary>
     public static class GameSettingsStore
     {
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 5;
 
         static GameSettings _current;
 
@@ -59,7 +59,13 @@ namespace MaidHome.Core.Settings
                 Debug.LogWarning("[Settings] 读取失败，使用默认设置：" + error.Message + "（" + FilePath + "）");
             }
 
-            if (_current.Version <= 0)
+            if (_current.Version < 5)
+            {
+                // 旧设置没有 AI 总开关，升级时保持原有 AI 功能可用。
+                _current.AiEnabled = true;
+            }
+
+            if (_current.Version < CurrentVersion)
             {
                 _current.Version = CurrentVersion;
             }

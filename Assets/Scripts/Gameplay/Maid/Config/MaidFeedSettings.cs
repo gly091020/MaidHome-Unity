@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace MaidHome.Gameplay.Maid
 {
-    /// <summary>喂食交互的可调参数。场景里的 Interaction 会优先读这份配置，没接配置时继续用脚本上的原字段。</summary>
+    /// <summary>喂食交互的可调参数。Interaction 直接从这份配置读取；没接配置会报错。</summary>
     [CreateAssetMenu(menuName = "MaidHome/设置/喂食交互", fileName = "MaidFeedSettings")]
     public sealed class MaidFeedSettings : ScriptableObject
     {
@@ -76,5 +76,245 @@ namespace MaidHome.Gameplay.Maid
             "不过……还挺好吃的。"
         };
         [SerializeField] private float _simpleEatSeconds = 1.5f;
+        public string EatClip
+        {
+            get { return _eatClip; }
+        }
+
+        public string BegClip
+        {
+            get { return _begClip; }
+        }
+
+        public float ClipFadeSeconds
+        {
+            get { return _clipFadeSeconds; }
+        }
+
+        public float EatMaxSeconds
+        {
+            get { return _eatMaxSeconds; }
+        }
+
+        public float EatSoundDelay
+        {
+            get { return _eatSoundDelay; }
+        }
+
+        public float SoundVolume
+        {
+            get { return _soundVolume; }
+        }
+
+        public AudioClip[] EatSounds
+        {
+            get { return _eatSounds; }
+        }
+
+        public GameObject CakePrefab
+        {
+            get { return _cakePrefab; }
+        }
+
+        public AudioClip CakeHitSound
+        {
+            get { return _cakeHitSound; }
+        }
+
+        public Texture2D ParticleTexture
+        {
+            get { return _particleTexture; }
+        }
+
+        public Material ParticleMaterial
+        {
+            get { return _particleMaterial; }
+        }
+
+        public float FeedOrthographicSize
+        {
+            get { return _feedOrthographicSize; }
+        }
+
+        public int ParticleCount
+        {
+            get { return _particleCount; }
+        }
+
+        public float ParticleLifetime
+        {
+            get { return _particleLifetime; }
+        }
+
+        public float ParticleSpeed
+        {
+            get { return _particleSpeed; }
+        }
+
+        public Vector2 ParticleSize
+        {
+            get { return _particleSize; }
+        }
+
+        public Color ParticleColor
+        {
+            get { return _particleColor; }
+        }
+
+        public Vector3 ParticleOffset
+        {
+            get { return _particleOffset; }
+        }
+
+        public float ParticleDelay
+        {
+            get { return _particleDelay; }
+        }
+
+        public float ParticleGravity
+        {
+            get { return _particleGravity; }
+        }
+
+        public string VoiceEvent
+        {
+            get { return _voiceEvent; }
+        }
+
+        public float VoiceDelay
+        {
+            get { return _voiceDelay; }
+        }
+
+        public float LineSeconds
+        {
+            get { return _lineSeconds; }
+        }
+
+        public string[] Lines
+        {
+            get { return _lines; }
+        }
+
+        public int DefaultLevel
+        {
+            get { return _defaultLevel; }
+        }
+
+        public float FeedCooldownSeconds
+        {
+            get { return _feedCooldownSeconds; }
+        }
+
+        public float CakeStartViewportY
+        {
+            get { return _cakeStartViewportY; }
+        }
+
+        public float CakeStartDepth
+        {
+            get { return _cakeStartDepth; }
+        }
+
+        public float CakeFlySeconds
+        {
+            get { return _cakeFlySeconds; }
+        }
+
+        public float CakeSpinDegrees
+        {
+            get { return _cakeSpinDegrees; }
+        }
+
+        public int MaxThrownCakes
+        {
+            get { return _maxThrownCakes; }
+        }
+
+        public float HeavyFlySeconds
+        {
+            get { return _heavyFlySeconds; }
+        }
+
+        public AudioClip HeavyHitSound
+        {
+            get { return _heavyHitSound; }
+        }
+
+        public float HeavyTwistDegrees
+        {
+            get { return _heavyTwistDegrees; }
+        }
+
+        public float HeavyTwistPitchDegrees
+        {
+            get { return _heavyTwistPitchDegrees; }
+        }
+
+        public float HeavyTwistSeconds
+        {
+            get { return _heavyTwistSeconds; }
+        }
+
+        public string HeavyVoiceEvent
+        {
+            get { return _heavyVoiceEvent; }
+        }
+
+        public string[] HeavyLines
+        {
+            get { return _heavyLines; }
+        }
+
+        public float ComboTimeoutSeconds
+        {
+            get { return _comboTimeoutSeconds; }
+        }
+
+        public int ComboMilestoneStep
+        {
+            get { return _comboMilestoneStep; }
+        }
+
+        public AudioClip MilestoneClip
+        {
+            get { return _milestoneClip; }
+        }
+
+        public float ComboParticleScale
+        {
+            get { return _comboParticleScale; }
+        }
+
+        public float ComboScale
+        {
+            get { return _comboScale; }
+        }
+
+        public Color CakeFlashColor
+        {
+            get { return _cakeFlashColor; }
+        }
+
+        public float CakeFlashSeconds
+        {
+            get { return _cakeFlashSeconds; }
+        }
+
+        public string CakeVoiceEvent
+        {
+            get { return _cakeVoiceEvent; }
+        }
+
+        public string[] CakeLines
+        {
+            get { return _cakeLines; }
+        }
+
+        public float SimpleEatSeconds
+        {
+            get { return _simpleEatSeconds; }
+        }
+
     }
 }

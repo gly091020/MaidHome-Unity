@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace MaidHome.Gameplay.Maid
 {
-    /// <summary>尾巴交互的可调参数。场景里的 Interaction 会优先读这份配置，没接配置时继续用脚本上的原字段。</summary>
+    /// <summary>尾巴交互的可调参数。Interaction 直接从这份配置读取；没接配置会报错。</summary>
     [CreateAssetMenu(menuName = "MaidHome/设置/尾巴交互", fileName = "MaidTailSettings")]
     public sealed class MaidTailSettings : ScriptableObject
     {
@@ -26,5 +26,100 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _flashSeconds = 0.5f;
         [SerializeField] private float _lineSeconds = 1f;
         [SerializeField] private float _complainCooldownSeconds = 1f;
+        public float DragSensitivity
+        {
+            get { return _dragSensitivity; }
+        }
+
+        public float DragReferencePixels
+        {
+            get { return _dragReferencePixels; }
+        }
+
+        public float YawSign
+        {
+            get { return _yawSign; }
+        }
+
+        public float PitchSign
+        {
+            get { return _pitchSign; }
+        }
+
+        public float ZFollow
+        {
+            get { return _zFollow; }
+        }
+
+        public float SafeZoneWidth
+        {
+            get { return _safeZoneWidth; }
+        }
+
+        public float SafeZoneHeight
+        {
+            get { return _safeZoneHeight; }
+        }
+
+        public float HitPaddingPixels
+        {
+            get { return _hitPaddingPixels; }
+        }
+
+        public float OverstretchDragFraction
+        {
+            get { return _overstretchDragFraction; }
+        }
+
+        public float TurnSeconds
+        {
+            get { return _turnSeconds; }
+        }
+
+        public float SniffTravelSeconds
+        {
+            get { return _sniffTravelSeconds; }
+        }
+
+        public float SniffMaxSeconds
+        {
+            get { return _sniffMaxSeconds; }
+        }
+
+        public float SniffZoomScale
+        {
+            get { return _sniffZoomScale; }
+        }
+
+        public float SniffMinSize
+        {
+            get { return _sniffMinSize; }
+        }
+
+        public float SoundVolume
+        {
+            get { return _soundVolume; }
+        }
+
+        public Color FlashColor
+        {
+            get { return _flashColor; }
+        }
+
+        public float FlashSeconds
+        {
+            get { return _flashSeconds; }
+        }
+
+        public float LineSeconds
+        {
+            get { return _lineSeconds; }
+        }
+
+        public float ComplainCooldownSeconds
+        {
+            get { return _complainCooldownSeconds; }
+        }
+
     }
 }

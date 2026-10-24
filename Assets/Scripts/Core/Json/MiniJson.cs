@@ -203,6 +203,21 @@ namespace MaidHome.Core.Json
             return fallback;
         }
 
+        public double AsDouble(double fallback)
+        {
+            if (_kind == JsonKind.Number)
+            {
+                return _number;
+            }
+
+            if (_kind == JsonKind.String && double.TryParse(_text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
+            {
+                return parsed;
+            }
+
+            return fallback;
+        }
+
         public int AsInt(int fallback)
         {
             if (_kind == JsonKind.Number)
@@ -211,6 +226,21 @@ namespace MaidHome.Core.Json
             }
 
             if (_kind == JsonKind.String && int.TryParse(_text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            {
+                return parsed;
+            }
+
+            return fallback;
+        }
+
+        public long AsLong(long fallback)
+        {
+            if (_kind == JsonKind.Number)
+            {
+                return (long)Math.Round(_number);
+            }
+
+            if (_kind == JsonKind.String && long.TryParse(_text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed))
             {
                 return parsed;
             }

@@ -26,7 +26,7 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _anchorPixels = 10f;
         [Tooltip("UI 放大倍率：字按 9×这个值光栅化，世界空间 Canvas 里直接写 9 号字会糊")]
         [SerializeField] private int _uiScale = 8;
-        [Tooltip("同排序层内的顺序基数，要比女仆模型的透明部分靠后画")]
+        [Tooltip("同排序层内的顺序基数；实际至少使用 32000，确保气泡始终在女仆之后绘制")]
         [SerializeField] private int _sortingOrder = 100;
         [Tooltip("最短显示时间：调用方传得比这个短就按这个算（0 = 完全听调用方的，TLM 默认一条活 15 秒）")]
         [SerializeField] private float _minSeconds = 4f;
@@ -71,6 +71,8 @@ namespace MaidHome.Gameplay.Maid
             public float ExtentPixels;
             public float TopPixels;
             public int Sequence;
+            public int Id;
+            public bool Persistent;
         }
 
         static MaidChatBubble _instance;
@@ -82,8 +84,10 @@ namespace MaidHome.Gameplay.Maid
         Sprite _tailLeft;
         Sprite _tailRight;
         Sprite _tailCenter;
+        Material _overlayMaterial;
         bool _spritesReady;
         int _sequence;
+        int _nextBubbleId = 1;
 
         /// <summary>让这只女仆头上冒一条气泡，到点自己消失</summary>
         public static void Show(MaidAgent maid, string line)
@@ -99,6 +103,31 @@ namespace MaidHome.Gameplay.Maid
             }
 
             Instance.Say(maid, line, seconds);
+        }
+
+        /// <summary>创建一条持续存在的气泡，返回句柄，用于思考中到回复原地替换。</summary>
+        public static int ShowPersistent(MaidAgent maid, string line)
+        {
+            if (maid == null || string.IsNullOrEmpty(line)) return 0;
+            return Instance.BeginPersistent(maid, line);
+        }
+
+        public static void UpdatePersistent(MaidAgent maid, int id, string line)
+        {
+            if (maid == null || id == 0 || _instance == null) return;
+            _instance.UpdatePersistentLine(maid, id, line);
+        }
+
+        public static void Complete(MaidAgent maid, int id, string line, float seconds)
+        {
+            if (maid == null || string.IsNullOrEmpty(line)) return;
+            if (_instance != null) _instance.CompletePersistent(maid, id, line, seconds);
+        }
+
+        public static void RemovePersistent(MaidAgent maid, int id)
+        {
+            if (maid == null || id == 0 || _instance == null) return;
+            _instance.RemovePersistentLine(maid, id);
         }
 
         /// <summary>立刻清掉这只女仆头上的所有气泡（退出交互模式时用）</summary>
@@ -172,12 +201,82 @@ namespace MaidHome.Gameplay.Maid
             Relayout(list);
         }
 
+        int BeginPersistent(MaidAgent maid, string line)
+        {
+            EnsureSprites();
+            if (_bodySprite == null) return 0;
+            List<Bubble> list;
+            if (!_byMaid.TryGetValue(maid, out list))
+            {
+                list = new List<Bubble>();
+                _byMaid.Add(maid, list);
+            }
+
+            if (list.Count >= MaxBubbles) Remove(list, Earliest(list));
+            Bubble bubble = Create(maid, line);
+            bubble.Id = _nextBubbleId++;
+            bubble.Persistent = true;
+            bubble.ExpireAt = float.PositiveInfinity;
+            bubble.Sequence = _sequence++;
+            list.Add(bubble);
+            Relayout(list);
+            return bubble.Id;
+        }
+
+        void UpdatePersistentLine(MaidAgent maid, int id, string line)
+        {
+            Bubble bubble = Find(maid, id);
+            if (bubble == null || string.IsNullOrEmpty(line)) return;
+            bubble.Text.text = line;
+            List<Bubble> list;
+            if (_byMaid.TryGetValue(maid, out list)) Relayout(list);
+        }
+
+        void CompletePersistent(MaidAgent maid, int id, string line, float seconds)
+        {
+            Bubble bubble = Find(maid, id);
+            if (bubble == null)
+            {
+                Say(maid, line, seconds);
+                return;
+            }
+
+            bubble.Text.text = line;
+            bubble.Persistent = false;
+            bubble.ExpireAt = Time.unscaledTime + Mathf.Max(_minSeconds, seconds > 0f ? seconds : DefaultSeconds);
+            List<Bubble> list;
+            if (_byMaid.TryGetValue(maid, out list)) Relayout(list);
+        }
+
+        void RemovePersistentLine(MaidAgent maid, int id)
+        {
+            Bubble bubble = Find(maid, id);
+            if (bubble == null) return;
+            List<Bubble> list = _byMaid[maid];
+            Remove(list, bubble);
+            if (list.Count == 0) _byMaid.Remove(maid);
+            else Relayout(list);
+        }
+
+        Bubble Find(MaidAgent maid, int id)
+        {
+            List<Bubble> list;
+            if (!_byMaid.TryGetValue(maid, out list)) return null;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i].Id == id) return list[i];
+            }
+
+            return null;
+        }
+
         Bubble Create(MaidAgent maid, string line)
         {
             GameObject root = new GameObject("ChatBubble", typeof(Canvas));
             Canvas canvas = root.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
-            canvas.sortingOrder = _sortingOrder;
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = SortingOrder(0);
             RectTransform rootRect = root.GetComponent<RectTransform>();
 
             Bubble bubble = new Bubble();
@@ -305,7 +404,7 @@ namespace MaidHome.Gameplay.Maid
                     leftY += ApplyLayout(bubble, BubblePosition.Left, leftY) + GapPixels;
                 }
 
-                bubble.Canvas.sortingOrder = _sortingOrder + i;
+                bubble.Canvas.sortingOrder = SortingOrder(i);
             }
         }
 
@@ -536,7 +635,7 @@ namespace MaidHome.Gameplay.Maid
                 new Vector2(0.5f, 0.5f), 100f);
         }
 
-        static Image CreateImage(RectTransform parent, string name, Sprite sprite)
+        Image CreateImage(RectTransform parent, string name, Sprite sprite)
         {
             GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
             RectTransform rect = go.GetComponent<RectTransform>();
@@ -546,6 +645,7 @@ namespace MaidHome.Gameplay.Maid
             rect.pivot = new Vector2(0f, 0f);
             Image image = go.GetComponent<Image>();
             image.sprite = sprite;
+            image.material = EnsureOverlayMaterial();
             image.raycastTarget = false;
             return image;
         }
@@ -569,8 +669,33 @@ namespace MaidHome.Gameplay.Maid
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
             text.raycastTarget = false;
+            text.material = EnsureOverlayMaterial();
             text.text = line;
             return text;
+        }
+
+        Material EnsureOverlayMaterial()
+        {
+            if (_overlayMaterial != null) return _overlayMaterial;
+            Shader shader = Shader.Find("UI/Default");
+            if (shader == null)
+            {
+                Debug.LogWarning("聊天气泡找不到 UI/Default shader，无法强制覆盖女仆渲染顺序", this);
+                return null;
+            }
+
+            _overlayMaterial = new Material(shader);
+            _overlayMaterial.name = "MaidChatBubbleOverlay";
+            _overlayMaterial.hideFlags = HideFlags.HideAndDontSave;
+            _overlayMaterial.renderQueue = 5000;
+            _overlayMaterial.SetInt("unity_GUIZTestMode",
+                (int)UnityEngine.Rendering.CompareFunction.Always);
+            return _overlayMaterial;
+        }
+
+        int SortingOrder(int index)
+        {
+            return Mathf.Clamp(Mathf.Max(_sortingOrder, 32000) + index, -32768, 32767);
         }
 
         void OnDestroy()
@@ -609,6 +734,11 @@ namespace MaidHome.Gameplay.Maid
             _tailLeft = null;
             _tailRight = null;
             _tailCenter = null;
+            if (_overlayMaterial != null)
+            {
+                Destroy(_overlayMaterial);
+                _overlayMaterial = null;
+            }
             _spritesReady = false;
             if (_instance == this)
             {

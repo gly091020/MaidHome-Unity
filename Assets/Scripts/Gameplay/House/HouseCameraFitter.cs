@@ -273,6 +273,12 @@ namespace MaidHome.Gameplay.House
             _moveRoutine = StartCoroutine(MoveTo(HouseViewWithOffsets(), _focusSeconds));
         }
 
+        /// <summary>中止当前取景动画，交给临时相机的调用方接管。</summary>
+        public void StopCurrentMove()
+        {
+            StopMove();
+        }
+
         /// <summary>当前正交尺寸下，1 像素等于多少世界单位（正交相机横竖一致）</summary>
         float WorldPerPixel
         {

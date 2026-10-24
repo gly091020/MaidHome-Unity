@@ -33,7 +33,7 @@ namespace MaidHome.Gameplay.Maid
             "不戴了不戴了。",
         };
 
-        [Header("配置（接了就覆盖下面的默认参数）")]
+        [Header("配置（留空自动读取 Resources/Settings；指定则优先）")]
         [SerializeField] private MaidMaskSettings _settings;
 
         [Header("挂件配置（预制体留空就按 Resources/MaidAttachment/mask 找）")]
@@ -113,9 +113,28 @@ namespace MaidHome.Gameplay.Maid
             _refocusRoutine = null;
         }
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                _settings = Resources.Load<MaidMaskSettings>("Settings/MaidMaskSettings");
+            }
+
+            if (_settings == null)
+            {
+                Debug.LogError("MaidMaskInteraction 没有挂 MaidMaskSettings，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _style = _settings.Style;
+            _maskOrthographicSize = _settings.MaskOrthographicSize;
+            _maskFocusPitchDegrees = _settings.MaskFocusPitchDegrees;
+
+            return true;
+        }
         void Awake()
         {
-            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidMaskInteraction");
+            ApplySettings();
             // 把配置登记给全局：从存档恢复时也按同一套参数挂，两处调不一样就怪了
             MaidAttachmentStyles.UseMask(_style);
         }

@@ -12,7 +12,7 @@ namespace MaidHome.Interop.Portal
         public string Id = "";
         public string Name = "";
         public string Root = "";
-        /// <summary>随包发的一段自定义 JSON，目前固定是空对象。</summary>
+        /// <summary>随包发的一段自定义 JSON；带 AI 聊天时标记 schema。</summary>
         public string DataJson = "{}";
         public readonly List<string> Files = new List<string>();
 

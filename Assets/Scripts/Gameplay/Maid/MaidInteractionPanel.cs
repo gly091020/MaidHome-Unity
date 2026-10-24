@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using MaidHome.Core.Settings;
 using MaidHome.Interop.Maid;
 using UnityEngine;
 using UnityEngine.UI;
@@ -29,6 +30,8 @@ namespace MaidHome.Gameplay.Maid
         public event Action BodyRequested;
         /// 点了「挂件」（打开第二层：选挂牌 / 面具）
         public event Action AttachRequested;
+        /// 点了「聊天」
+        public event Action ChatRequested;
 
         [Tooltip("正式面板根节点。留空会自动生成一个占位面板")]
         [SerializeField] private GameObject _panelRoot;
@@ -49,6 +52,8 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private Button _bodyButton;
         [Tooltip("「挂件」按钮（打开第二层选挂牌 / 面具）。字段名是旧的，别改——场景里已经接在这上面了")]
         [SerializeField] private Button _signButton;
+        [Tooltip("「聊天」按钮。留空会自动补一个")]
+        [SerializeField] private Button _chatButton;
         [Tooltip("只对自动生成的面板生效：贴到屏幕下方。自定义面板不会被动")]
         [SerializeField] private bool _placeAtBottom = true;
         [SerializeField] private float _bottomOffset = 40f;
@@ -115,6 +120,12 @@ namespace MaidHome.Gameplay.Maid
                 _signButton.onClick.AddListener(RequestAttach);
             }
 
+            EnsureChatButton();
+            if (_chatButton != null)
+            {
+                _chatButton.onClick.AddListener(RequestChat);
+            }
+
             Close();
         }
 
@@ -160,6 +171,11 @@ namespace MaidHome.Gameplay.Maid
                 _signButton.onClick.RemoveListener(RequestAttach);
             }
 
+            if (_chatButton != null)
+            {
+                _chatButton.onClick.RemoveListener(RequestChat);
+            }
+
             CloseRequested = null;
             TailRequested = null;
             FaceRequested = null;
@@ -168,6 +184,7 @@ namespace MaidHome.Gameplay.Maid
             GroomRequested = null;
             BodyRequested = null;
             AttachRequested = null;
+            ChatRequested = null;
         }
 
         public void Open(MaidSaveData maid, bool tailAvailable)
@@ -220,6 +237,7 @@ namespace MaidHome.Gameplay.Maid
             SetBodyAvailable(bodyAvailable);
             // 挂件入口一直可点：里面挂牌 / 面具各自可不可用由第二层面板判断
             SetAttachAvailable(true);
+            SetAiAvailable(GameSettingsStore.Current.AiEnabled);
             if (_optionsText != null)
             {
                 _optionsText.text = BuildOptions(maid, tailAvailable, faceAvailable, feedAvailable,
@@ -353,6 +371,24 @@ namespace MaidHome.Gameplay.Maid
             }
         }
 
+        public void RequestChat()
+        {
+            if (GameSettingsStore.Current.AiEnabled && ChatRequested != null)
+            {
+                ChatRequested();
+            }
+        }
+
+        public void SetAiAvailable(bool available)
+        {
+            EnsureChatButton();
+            if (_chatButton != null)
+            {
+                _chatButton.gameObject.SetActive(true);
+                _chatButton.interactable = available;
+            }
+        }
+
         /// 挂件入口默认一直可点（具体哪样能挂由第二层面板判断）
         public void SetAttachAvailable(bool available)
         {
@@ -392,7 +428,8 @@ namespace MaidHome.Gameplay.Maid
             string groom = groomAvailable ? "「梳毛」沿头发、耳朵、尾巴刷；刷反了会疼\n" : "";
             string bodyLine = bodyAvailable ? "「玩全身」按住任意部位拖动；退出会还原站姿\n" : "";
             string attach = "「挂件」选挂牌子（写字、吓唬别的女仆）或戴面具（贴照片）\n";
-            return food + pet + groom + bodyLine + attach + body;
+            string chat = "「聊天」打开 AI 聊天记录；回复也会显示在她头顶\n";
+            return food + pet + groom + bodyLine + attach + chat + body;
         }
 
         static string BuildInfo(MaidSaveData maid)
@@ -435,7 +472,7 @@ namespace MaidHome.Gameplay.Maid
                 16, TextAnchor.UpperLeft);
             _optionsText = CreateText(panel.transform, "Options", new Vector2(0f, -70f), new Vector2(800f, 100f),
                 16, TextAnchor.UpperLeft);
-            // 底下这一排共 7 个：从 -390 排到 330，左右各留 60
+            // 底下这一排共 8 个：从 -390 排到 410
             _tailButton = CreateButton(panel.transform, "摸尾巴", new Vector2(-336f, -160f),
                 new Vector2(108f, 34f));
             _faceButton = CreateButton(panel.transform, "摸脸", new Vector2(-238f, -160f),
@@ -449,6 +486,8 @@ namespace MaidHome.Gameplay.Maid
             _signButton = CreateButton(panel.transform, "挂件", new Vector2(190f, -160f),
                 new Vector2(100f, 34f));
             _closeButton = CreateButton(panel.transform, "关闭", new Vector2(290f, -160f),
+                new Vector2(80f, 34f));
+            _chatButton = CreateButton(panel.transform, "聊天", new Vector2(380f, -160f),
                 new Vector2(80f, 34f));
             _generated = true;
         }
@@ -620,6 +659,67 @@ namespace MaidHome.Gameplay.Maid
             _signButton = CreateButton(_panelRoot.transform, "挂件", position, size);
             Debug.LogWarning("自定义女仆交互面板没接「挂件」按钮，先照「梳毛」的位置往左补了一个；"
                 + "建议自己加一个按钮接到 MaidInteractionPanel 的 Sign Button（字段名是旧的）", this);
+        }
+
+        void EnsureChatButton()
+        {
+            if (_chatButton != null || _panelRoot == null || _generated)
+            {
+                return;
+            }
+
+            Button template = _petButton != null ? _petButton
+                : _signButton != null ? _signButton
+                : _tailButton;
+            if (template != null && template.transform.parent != null)
+            {
+                RectTransform templateRect = template.transform as RectTransform;
+                Transform content = template.transform.parent;
+                _chatButton = CreateButton(content, "聊天", Vector2.zero,
+                    templateRect != null ? templateRect.sizeDelta : new Vector2(314f, 100f));
+                RectTransform rect = _chatButton.transform as RectTransform;
+                if (rect != null && templateRect != null)
+                {
+                    rect.anchorMin = templateRect.anchorMin;
+                    rect.anchorMax = templateRect.anchorMax;
+                    rect.pivot = templateRect.pivot;
+                    rect.anchoredPosition = new Vector2(
+                        templateRect.anchoredPosition.x + templateRect.sizeDelta.x,
+                        templateRect.anchoredPosition.y);
+                }
+
+                CopyButtonStyle(template, _chatButton);
+                Debug.LogWarning("自定义女仆交互面板没接「聊天」按钮，已在现有按钮网格中补一个；"
+                    + "建议自己接线到 MaidInteractionPanel 的 Chat Button", this);
+                return;
+            }
+
+            _chatButton = CreateButton(_panelRoot.transform, "聊天", new Vector2(0f, 110f),
+                new Vector2(180f, 56f));
+            Debug.LogWarning("自定义女仆交互面板没接「聊天」按钮，自动补在面板上方；"
+                + "建议自己接线到 MaidInteractionPanel 的 Chat Button", this);
+        }
+
+        static void CopyButtonStyle(Button source, Button target)
+        {
+            if (source == null || target == null) return;
+            Image sourceImage = source.targetGraphic as Image;
+            Image targetImage = target.targetGraphic as Image;
+            if (sourceImage != null && targetImage != null)
+            {
+                targetImage.sprite = sourceImage.sprite;
+                targetImage.type = sourceImage.type;
+                targetImage.color = sourceImage.color;
+            }
+
+            Text sourceText = source.GetComponentInChildren<Text>(true);
+            Text targetText = target.GetComponentInChildren<Text>(true);
+            if (sourceText != null && targetText != null)
+            {
+                targetText.font = sourceText.font;
+                targetText.fontSize = sourceText.fontSize;
+                targetText.color = sourceText.color;
+            }
         }
 
         void PlacePanel()

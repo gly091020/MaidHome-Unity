@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace MaidHome.Gameplay.Maid
 {
-    /// <summary>梳毛交互的可调参数。场景里的 Interaction 会优先读这份配置，没接配置时继续用脚本上的原字段。</summary>
+    /// <summary>梳毛交互的可调参数。Interaction 直接从这份配置读取；没接配置会报错。</summary>
     [CreateAssetMenu(menuName = "MaidHome/设置/梳毛交互", fileName = "MaidGroomingSettings")]
     public sealed class MaidGroomingSettings : ScriptableObject
     {
@@ -30,5 +30,120 @@ namespace MaidHome.Gameplay.Maid
         [SerializeField] private float _cheerSeconds = 20f;
         [SerializeField] private string _cheerSoundId = MaidSoundId.Tamed;
         [SerializeField] private bool _showDebug;
+        public float EarHitScale
+        {
+            get { return _earHitScale; }
+        }
+
+        public float MaxDragWorld
+        {
+            get { return _maxDragWorld; }
+        }
+
+        public bool GrainOnHair
+        {
+            get { return _grainOnHair; }
+        }
+
+        public float ComfortCooldown
+        {
+            get { return _comfortCooldown; }
+        }
+
+        public float AgainstCooldown
+        {
+            get { return _againstCooldown; }
+        }
+
+        public float LineSeconds
+        {
+            get { return _lineSeconds; }
+        }
+
+        public float EarPressOnTouch
+        {
+            get { return _earPressOnTouch; }
+        }
+
+        public bool LieDown
+        {
+            get { return _lieDown; }
+        }
+
+        public float LieTiltDegrees
+        {
+            get { return _lieTiltDegrees; }
+        }
+
+        public float LieLift
+        {
+            get { return _lieLift; }
+        }
+
+        public float LieGroundClearance
+        {
+            get { return _lieGroundClearance; }
+        }
+
+        public string SleepClip
+        {
+            get { return _sleepClip; }
+        }
+
+        public float LieDelaySeconds
+        {
+            get { return _lieDelaySeconds; }
+        }
+
+        public float TurnBackSeconds
+        {
+            get { return _turnBackSeconds; }
+        }
+
+        public bool FocusTailToo
+        {
+            get { return _focusTailToo; }
+        }
+
+        public float TailSensitivity
+        {
+            get { return _tailSensitivity; }
+        }
+
+        public float TailDragPixels
+        {
+            get { return _tailDragPixels; }
+        }
+
+        public Color FlashColor
+        {
+            get { return _flashColor; }
+        }
+
+        public float FlashSeconds
+        {
+            get { return _flashSeconds; }
+        }
+
+        public float VoiceVolume
+        {
+            get { return _voiceVolume; }
+        }
+
+        public float CheerSeconds
+        {
+            get { return _cheerSeconds; }
+        }
+
+        public string CheerSoundId
+        {
+            get { return _cheerSoundId; }
+        }
+
+        public bool ShowDebug
+        {
+            get { return _showDebug; }
+        }
+
     }
 }

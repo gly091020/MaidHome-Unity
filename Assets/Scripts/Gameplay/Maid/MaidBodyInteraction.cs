@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using MaidHome.Core.Input;
 using MaidHome.Gameplay.Audio;
+using MaidHome.Gameplay.House;
 using UnityEngine;
 
 namespace MaidHome.Gameplay.Maid
@@ -16,7 +17,7 @@ namespace MaidHome.Gameplay.Maid
     {
         public event Action Ended;
 
-        [Header("配置（接了就覆盖下面的默认参数）")]
+        [Header("配置（留空自动读取 Resources/Settings；指定则优先）")]
         [SerializeField] private MaidBodySettings _settings;
 
         [Header("拖拽手感")]
@@ -40,6 +41,16 @@ namespace MaidHome.Gameplay.Maid
         private bool _ignoreAllSelfCollision = true;
         [Tooltip("关掉关节角度限制（只剩位置约束），摆起来最软。默认关闭，也就是保留 10°/15° 限制")]
         private bool _disableAngleLimits;
+
+        [Header("玩全身视角")]
+        [Tooltip("玩全身全程使用这个透视 FOV")]
+        private float _bodyPerspectiveFov = 35f;
+        [Tooltip("调整视角时，手指划过一屏高度旋转多少度")]
+        private float _viewRotateDegreesPerScreenHeight = 180f;
+        private float _viewPitchMinDegrees = -75f;
+        private float _viewPitchMaxDegrees = 75f;
+        [Tooltip("自动框住整只女仆时再留出的边距")]
+        private float _viewFitMargin = 1.15f;
 
         [Header("体感模式")]
         [Tooltip("传感器重力大小（米/秒²）")]
@@ -96,6 +107,13 @@ namespace MaidHome.Gameplay.Maid
         float _lastHurtAt = -100f;
         Transform _headBone;
         bool _motionMode;
+        bool _cameraViewMode;
+        int _viewFingerId = -1;
+        Vector2 _viewLastPosition;
+        Vector3 _viewTarget;
+        float _viewYaw;
+        float _viewPitch;
+        float _viewDistance;
         bool _sensorInitialized;
         Vector3 _sensorLowPass;
         Vector3 _sensorPrevious;
@@ -108,10 +126,57 @@ namespace MaidHome.Gameplay.Maid
         float _savedOrthographicSize;
         float _savedNear;
         float _savedFar;
+        Vector3 _savedCameraPosition;
+        Quaternion _savedCameraRotation;
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                _settings = Resources.Load<MaidBodySettings>("Settings/MaidBodySettings");
+            }
+
+            if (_settings == null)
+            {
+                Debug.LogError("MaidBodyInteraction 没有挂 MaidBodySettings，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _spring = _settings.Spring;
+            _damper = _settings.Damper;
+            _tolerance = _settings.Tolerance;
+            _springDelayFrames = _settings.SpringDelayFrames;
+            _pickFallbackPixels = _settings.PickFallbackPixels;
+            _pickFallbackScreenRatio = _settings.PickFallbackScreenRatio;
+            _rayDistance = _settings.RayDistance;
+            _dragMask = _settings.DragMask;
+            _ignoreAllSelfCollision = _settings.IgnoreAllSelfCollision;
+            _disableAngleLimits = _settings.DisableAngleLimits;
+            _bodyPerspectiveFov = _settings.BodyPerspectiveFov;
+            _viewRotateDegreesPerScreenHeight = _settings.ViewRotateDegreesPerScreenHeight;
+            _viewPitchMinDegrees = _settings.ViewPitchMinDegrees;
+            _viewPitchMaxDegrees = _settings.ViewPitchMaxDegrees;
+            _viewFitMargin = _settings.ViewFitMargin;
+            _sensorGravity = _settings.SensorGravity;
+            _sensorAccelerationScale = _settings.SensorAccelerationScale;
+            _sensorJerkScale = _settings.SensorJerkScale;
+            _sensorSmoothing = _settings.SensorSmoothing;
+            _sensorDeadzone = _settings.SensorDeadzone;
+            _motionDepthRatio = _settings.MotionDepthRatio;
+            _motionWallThickness = _settings.MotionWallThickness;
+            _impactFlashSpeed = _settings.ImpactFlashSpeed;
+            _impactFlashCooldown = _settings.ImpactFlashCooldown;
+            _hurtRestartCooldown = _settings.HurtRestartCooldown;
+            _impactWarmupSeconds = _settings.ImpactWarmupSeconds;
+            _impactFlashColor = _settings.ImpactFlashColor;
+            _impactFlashSeconds = _settings.ImpactFlashSeconds;
+            _impactVoiceVolume = _settings.ImpactVoiceVolume;
+
+            return true;
+        }
         void Awake()
         {
-            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidBodyInteraction");
+            ApplySettings();
         }
 
         /// <summary>这个女仆能不能玩全身。模型里至少要能认出物理块</summary>
@@ -178,11 +243,19 @@ namespace MaidHome.Gameplay.Maid
                 }
             }
 
+            Camera camera = Camera.main;
+            if (camera != null)
+            {
+                ApplyBodyPerspective(camera);
+            }
+
             EnsurePanel();
             CachePickColliders();
             if (_panel != null)
             {
                 _panel.SetMotion(false);
+                _panel.SetView(false);
+                _panel.SetViewAvailable(true);
                 _panel.SetHint("");
                 _panel.Show();
             }
@@ -230,6 +303,7 @@ namespace MaidHome.Gameplay.Maid
 
         void Release()
         {
+            SetViewMode(false);
             SetMotionMode(false);
             for (int i = 0; i < _grabs.Count; i++)
             {
@@ -258,7 +332,10 @@ namespace MaidHome.Gameplay.Maid
             _agent = null;
             _headBone = null;
             _motionMode = false;
+            _cameraViewMode = false;
+            _viewFingerId = -1;
             _sensorInitialized = false;
+            RestoreProjection();
             IsActive = false;
         }
 
@@ -364,6 +441,12 @@ namespace MaidHome.Gameplay.Maid
             }
 
             PointerInput.CopyPointers(_pointers);
+            if (_cameraViewMode)
+            {
+                UpdateViewInput();
+                return;
+            }
+
             for (int i = 0; i < _pointers.Count; i++)
             {
                 PointerInput.Pointer pointer = _pointers[i];
@@ -381,6 +464,59 @@ namespace MaidHome.Gameplay.Maid
                     UpdateGrab(pointer);
                 }
             }
+        }
+
+        void UpdateViewInput()
+        {
+            PointerInput.Pointer active = new PointerInput.Pointer();
+            bool hasActive = false;
+            for (int i = 0; i < _pointers.Count; i++)
+            {
+                PointerInput.Pointer pointer = _pointers[i];
+                if (pointer.FingerId == _viewFingerId)
+                {
+                    active = pointer;
+                    hasActive = true;
+                    break;
+                }
+            }
+
+            if (_viewFingerId < 0 || !hasActive)
+            {
+                _viewFingerId = -1;
+                for (int i = 0; i < _pointers.Count; i++)
+                {
+                    PointerInput.Pointer pointer = _pointers[i];
+                    if (pointer.Pressed && !pointer.Released && !pointer.OverUi)
+                    {
+                        _viewFingerId = pointer.FingerId;
+                        _viewLastPosition = pointer.Position;
+                        return;
+                    }
+                }
+
+                return;
+            }
+
+            if (active.Released)
+            {
+                _viewFingerId = -1;
+                return;
+            }
+
+            if (!active.Held || active.Pressed)
+            {
+                return;
+            }
+
+            Vector2 delta = active.Position - _viewLastPosition;
+            _viewLastPosition = active.Position;
+            float degreesPerPixel = Mathf.Max(1f, _viewRotateDegreesPerScreenHeight)
+                / Mathf.Max(1f, Screen.height);
+            _viewYaw += delta.x * degreesPerPixel;
+            _viewPitch = Mathf.Clamp(_viewPitch + delta.y * degreesPerPixel,
+                Mathf.Min(_viewPitchMinDegrees, _viewPitchMaxDegrees),
+                Mathf.Max(_viewPitchMinDegrees, _viewPitchMaxDegrees));
         }
 
         void BeginGrab(PointerInput.Pointer pointer)
@@ -750,11 +886,62 @@ namespace MaidHome.Gameplay.Maid
             SetMotionMode(!_motionMode);
         }
 
+        void ToggleViewMode()
+        {
+            if (!IsActive || _motionMode)
+            {
+                return;
+            }
+
+            SetViewMode(!_cameraViewMode);
+        }
+
+        void SetViewMode(bool on)
+        {
+            if (on && (!IsActive || _motionMode))
+            {
+                return;
+            }
+
+            if (_cameraViewMode == on)
+            {
+                if (_panel != null)
+                {
+                    _panel.SetView(on);
+                }
+
+                return;
+            }
+
+            _cameraViewMode = on;
+            _viewFingerId = -1;
+            if (on)
+            {
+                ReleaseGrabs();
+                FocusBodyView();
+                if (_panel != null)
+                {
+                    _panel.SetView(true);
+                    _panel.SetHint("调整视角：拖动屏幕旋转视角，再点按钮返回拖拽");
+                }
+            }
+            else if (_panel != null)
+            {
+                _panel.SetView(false);
+                _panel.SetHint("");
+            }
+        }
+
         void SetMotionMode(bool on)
         {
             if (on && !IsActive)
             {
                 return;
+            }
+
+            if (on)
+            {
+                SetViewMode(false);
             }
 
             if (on && !HasAccelerometer())
@@ -778,13 +965,13 @@ namespace MaidHome.Gameplay.Maid
                     }
 
                     DestroyMotionSpace();
-                    RestoreProjection();
                     _sensorInitialized = false;
                 }
 
                 if (_panel != null)
                 {
                     _panel.SetMotion(on);
+                    _panel.SetViewAvailable(!on);
                 }
 
                 return;
@@ -800,14 +987,7 @@ namespace MaidHome.Gameplay.Maid
                     return;
                 }
 
-                SaveProjection(camera);
-                if (camera.orthographic)
-                {
-                    float distance = DistanceToAgent(camera);
-                    float fov = 2f * Mathf.Atan(camera.orthographicSize / Mathf.Max(0.1f, distance)) * Mathf.Rad2Deg;
-                    camera.orthographic = false;
-                    camera.fieldOfView = Mathf.Clamp(fov, 5f, 120f);
-                }
+                EnforceBodyPerspective(camera);
 
                 BuildMotionSpace(camera);
                 _sensorLowPass = ReadAcceleration();
@@ -821,6 +1001,7 @@ namespace MaidHome.Gameplay.Maid
                 if (_panel != null)
                 {
                     _panel.SetMotion(true);
+                    _panel.SetViewAvailable(false);
                     _panel.SetHint("体感开启：倾斜手机改变重力，晃动会给布娃娃加速度");
                 }
 
@@ -833,13 +1014,155 @@ namespace MaidHome.Gameplay.Maid
             }
 
             DestroyMotionSpace();
-            RestoreProjection();
             _sensorInitialized = false;
             if (_panel != null)
             {
                 _panel.SetMotion(false);
+                _panel.SetViewAvailable(true);
                 _panel.SetHint("");
             }
+        }
+
+        void ReleaseGrabs()
+        {
+            for (int i = 0; i < _grabs.Count; i++)
+            {
+                DestroyGrab(_grabs[i]);
+            }
+
+            _grabs.Clear();
+        }
+
+        void FocusBodyView()
+        {
+            Camera camera = Camera.main;
+            if (camera == null || _agent == null)
+            {
+                return;
+            }
+
+            EnforceBodyPerspective(camera);
+            Bounds bounds = _agent.GetBounds();
+            _viewTarget = bounds.center;
+            Vector3 offset = camera.transform.position - _viewTarget;
+            if (offset.sqrMagnitude < 0.0001f)
+            {
+                offset = -camera.transform.forward;
+            }
+
+            offset.Normalize();
+            _viewYaw = Mathf.Atan2(-offset.x, -offset.z) * Mathf.Rad2Deg;
+            _viewPitch = Mathf.Asin(Mathf.Clamp(offset.y, -1f, 1f)) * Mathf.Rad2Deg;
+            _viewPitch = Mathf.Clamp(_viewPitch,
+                Mathf.Min(_viewPitchMinDegrees, _viewPitchMaxDegrees),
+                Mathf.Max(_viewPitchMinDegrees, _viewPitchMaxDegrees));
+            _viewDistance = FitBodyDistance(camera, bounds);
+            ApplyViewCamera(camera);
+        }
+
+        float FitBodyDistance(Camera camera, Bounds bounds)
+        {
+            float halfFov = Mathf.Clamp(_bodyPerspectiveFov, 5f, 120f) * 0.5f * Mathf.Deg2Rad;
+            float tan = Mathf.Max(0.01f, Mathf.Tan(halfFov));
+            float radius = Mathf.Max(0.25f, bounds.extents.magnitude);
+            float distance = radius / tan;
+            float aspect = Mathf.Max(0.1f, camera.aspect);
+            if (aspect < 1f)
+            {
+                distance = Mathf.Max(distance, radius / (tan * aspect));
+            }
+
+            return Mathf.Max(0.5f, distance * Mathf.Clamp(_viewFitMargin, 0.5f, 2f));
+        }
+
+        void ApplyViewCamera(Camera camera)
+        {
+            Vector3 offset = Quaternion.Euler(_viewPitch, _viewYaw, 0f)
+                * Vector3.back * Mathf.Max(0.5f, _viewDistance);
+            camera.transform.position = _viewTarget + offset;
+            camera.transform.rotation = Quaternion.LookRotation(-offset.normalized, Vector3.up);
+        }
+
+        void ApplyBodyPerspective(Camera camera)
+        {
+            if (camera == null || _agent == null)
+            {
+                return;
+            }
+
+            HouseCameraFitter fitter = camera.GetComponent<HouseCameraFitter>();
+            if (fitter != null)
+            {
+                fitter.StopCurrentMove();
+            }
+
+            SaveProjection(camera);
+            float fieldOfView = Mathf.Clamp(_bodyPerspectiveFov, 5f, 120f);
+            float distance = DistanceToAgent(camera);
+            if (camera.orthographic)
+            {
+                distance = camera.orthographicSize
+                    / Mathf.Max(0.01f, Mathf.Tan(fieldOfView * 0.5f * Mathf.Deg2Rad));
+            }
+
+            Bounds bounds = _agent.GetBounds();
+            _viewTarget = bounds.center;
+            Vector3 direction = _viewTarget - camera.transform.position;
+            if (direction.sqrMagnitude < 0.0001f)
+            {
+                direction = camera.transform.forward;
+            }
+
+            direction.Normalize();
+            _viewDistance = Mathf.Max(0.5f, distance);
+            camera.orthographic = false;
+            camera.fieldOfView = fieldOfView;
+            camera.transform.position = _viewTarget - direction * _viewDistance;
+            camera.transform.rotation = Quaternion.LookRotation(direction, Vector3.up);
+
+            Vector3 offset = -direction;
+            _viewYaw = Mathf.Atan2(-offset.x, -offset.z) * Mathf.Rad2Deg;
+            _viewPitch = Mathf.Asin(Mathf.Clamp(offset.y, -1f, 1f)) * Mathf.Rad2Deg;
+            _viewPitch = Mathf.Clamp(_viewPitch,
+                Mathf.Min(_viewPitchMinDegrees, _viewPitchMaxDegrees),
+                Mathf.Max(_viewPitchMinDegrees, _viewPitchMaxDegrees));
+        }
+
+        void EnforceBodyPerspective(Camera camera)
+        {
+            if (camera == null)
+            {
+                return;
+            }
+
+            camera.orthographic = false;
+            camera.fieldOfView = Mathf.Clamp(_bodyPerspectiveFov, 5f, 120f);
+        }
+
+        void LateUpdate()
+        {
+            if (!IsActive || _agent == null || _ragdoll == null)
+            {
+                return;
+            }
+
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                return;
+            }
+
+            // HouseCameraFitter 的取景协程会把相机按回正交，这里统一压回玩全身透视。
+            EnforceBodyPerspective(camera);
+            if (!_cameraViewMode)
+            {
+                return;
+            }
+
+            Bounds bounds = _agent.GetBounds();
+            float blend = 1f - Mathf.Exp(-10f * Time.unscaledDeltaTime);
+            _viewTarget = Vector3.Lerp(_viewTarget, bounds.center, blend);
+            ApplyViewCamera(camera);
         }
 
         bool HasAccelerometer()
@@ -905,6 +1228,8 @@ namespace MaidHome.Gameplay.Maid
             _savedOrthographicSize = camera.orthographicSize;
             _savedNear = camera.nearClipPlane;
             _savedFar = camera.farClipPlane;
+            _savedCameraPosition = camera.transform.position;
+            _savedCameraRotation = camera.transform.rotation;
             _projectionSaved = true;
         }
 
@@ -922,6 +1247,7 @@ namespace MaidHome.Gameplay.Maid
                 _projectionCamera.orthographicSize = _savedOrthographicSize;
                 _projectionCamera.nearClipPlane = _savedNear;
                 _projectionCamera.farClipPlane = _savedFar;
+                _projectionCamera.transform.SetPositionAndRotation(_savedCameraPosition, _savedCameraRotation);
             }
 
             _projectionCamera = null;
@@ -1031,6 +1357,8 @@ namespace MaidHome.Gameplay.Maid
             _panel.ExitRequested += End;
             _panel.MotionToggleRequested -= ToggleMotionMode;
             _panel.MotionToggleRequested += ToggleMotionMode;
+            _panel.ViewToggleRequested -= ToggleViewMode;
+            _panel.ViewToggleRequested += ToggleViewMode;
         }
 
         /// <summary>场景里手摆的 MaidBodyPanel（挂在别的物体上、并且自己接了 bar）</summary>

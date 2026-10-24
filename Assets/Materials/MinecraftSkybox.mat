@@ -18,14 +18,32 @@ Material:
   disabledShaderPasses: []
   m_SavedProperties:
     serializedVersion: 3
-    m_TexEnvs: []
+    m_TexEnvs:
+    - _MoonTex:
+        m_Texture: {fileID: 2800000, guid: a22859df90634ddb9a60e87bca100299, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _SunTex:
+        m_Texture: {fileID: 2800000, guid: 8a77bc408bd34224b42f9bd94225205d, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Floats:
+    - _CelestialAngle: 0
     - _Exponent: 1.5
+    - _MoonGlow: 0
+    - _MoonPhase: 0
+    - _MoonSize: 0.105
+    - _MoonSpriteSize: 0.15
+    - _NightAmount: 0
+    - _StarAmount: 0
     - _SunGlow: 0.4
     - _SunSize: 0.02
     m_Colors:
     - _GroundColor: {r: 0.75, g: 0.85, b: 1, a: 1}
     - _HorizonColor: {r: 0.75, g: 0.85, b: 1, a: 1}
-    - _SunColor: {r: 1, g: 0.97, b: 0.9, a: 1}
+    - _MoonColor: {r: 1, g: 1, b: 1, a: 1}
+    - _StarColor: {r: 1, g: 1, b: 1, a: 1}
+    - _SunColor: {r: 1, g: 1, b: 1, a: 1}
     - _TopColor: {r: 0.47, g: 0.65, b: 1, a: 1}
+    - _MoonDirection: {r: -0.3214, g: -0.766, b: 0.5567, a: 0}
     - _SunDirection: {r: 0.3214, g: 0.766, b: -0.5567, a: 0}

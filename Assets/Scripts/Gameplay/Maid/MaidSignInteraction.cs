@@ -34,7 +34,7 @@ namespace MaidHome.Gameplay.Maid
             "呼，不用再挂着那个了。",
         };
 
-        [Header("配置（接了就覆盖下面的默认参数）")]
+        [Header("配置（留空自动读取 Resources/Settings；指定则优先）")]
         [SerializeField] private MaidSignSettings _settings;
 
         [Tooltip("挂牌模式把相机推近到这个正交尺寸（0 = 不推近，保持点开女仆的取景）")]
@@ -57,9 +57,28 @@ namespace MaidHome.Gameplay.Maid
 
         public bool IsActive { get; private set; }
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                _settings = Resources.Load<MaidSignSettings>("Settings/MaidSignSettings");
+            }
+
+            if (_settings == null)
+            {
+                Debug.LogError("MaidSignInteraction 没有挂 MaidSignSettings，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _signOrthographicSize = _settings.SignOrthographicSize;
+            _signFocusPitchDegrees = _settings.SignFocusPitchDegrees;
+            _style = _settings.Style;
+
+            return true;
+        }
         void Awake()
         {
-            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidSignInteraction");
+            ApplySettings();
             // 配置登记给全局：从存档恢复时也用同一套参数挂牌子
             MaidAttachmentStyles.UseSign(_style);
         }

@@ -20,7 +20,7 @@ namespace MaidHome.Gameplay.Maid
     {
         public event Action Ended;
 
-        [Header("配置（接了就覆盖下面的默认参数）")]
+        [Header("配置（留空自动读取 Resources/Settings；指定则优先）")]
         [SerializeField] private MaidTailSettings _settings;
 
         [Header("拖尾巴手感")]
@@ -170,9 +170,44 @@ namespace MaidHome.Gameplay.Maid
             return true;
         }
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                _settings = Resources.Load<MaidTailSettings>("Settings/MaidTailSettings");
+            }
+
+            if (_settings == null)
+            {
+                Debug.LogError("MaidTailInteraction 没有挂 MaidTailSettings，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _dragSensitivity = _settings.DragSensitivity;
+            _dragReferencePixels = _settings.DragReferencePixels;
+            _yawSign = _settings.YawSign;
+            _pitchSign = _settings.PitchSign;
+            _zFollow = _settings.ZFollow;
+            _safeZoneWidth = _settings.SafeZoneWidth;
+            _safeZoneHeight = _settings.SafeZoneHeight;
+            _hitPaddingPixels = _settings.HitPaddingPixels;
+            _overstretchDragFraction = _settings.OverstretchDragFraction;
+            _turnSeconds = _settings.TurnSeconds;
+            _sniffTravelSeconds = _settings.SniffTravelSeconds;
+            _sniffMaxSeconds = _settings.SniffMaxSeconds;
+            _sniffZoomScale = _settings.SniffZoomScale;
+            _sniffMinSize = _settings.SniffMinSize;
+            _soundVolume = _settings.SoundVolume;
+            _flashColor = _settings.FlashColor;
+            _flashSeconds = _settings.FlashSeconds;
+            _lineSeconds = _settings.LineSeconds;
+            _complainCooldownSeconds = _settings.ComplainCooldownSeconds;
+
+            return true;
+        }
         void Awake()
         {
-            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidTailInteraction");
+            ApplySettings();
         }
 
         /// 这个女仆的模型有没有能摸的尾巴，用来决定面板按钮能不能点

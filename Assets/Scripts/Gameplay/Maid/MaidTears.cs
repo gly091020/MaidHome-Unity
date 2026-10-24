@@ -20,26 +20,20 @@ namespace MaidHome.Gameplay.Maid
         const string TearTexturePath = "MoreAnimation/tear";
         const string DropTexturePath = "MoreAnimation/tear_drop";
 
-        [SerializeField] private float _streakWidthRatio = 0.12f;
-        [SerializeField] private float _dropSizeRatio = 0.25f;
-        [SerializeField] private float _dropInterval = 0.5f;
-        [Tooltip("贴到头网格表面后再往前推的极小距离，防止 z-fighting")]
-        [SerializeField] private float _surfaceOffset = 0.01f;
-        [Tooltip("脸部方框在 Head 局部坐标里的边长（模型 1 格 = 16 像素，8 像素头约 0.5）")]
-        [SerializeField] private float _faceSize = 0.46f;
-        [Tooltip("泪痕所在的正面深度（Head 局部 Z），8 像素头约 0.23")]
-        [SerializeField] private float _faceForward = 0.25f;
-        [Tooltip("整张泪痕在 Head 局部坐标里的微调（x 右为正，y 上为正）")]
-        [SerializeField] private Vector2 _faceOffset = Vector2.zero;
-        [Tooltip("泪滴粒子贴图；留空会尝试 Resources/MoreAnimation/tear_drop，都没有就不生成泪滴")]
-        [SerializeField] private Texture2D _dropTexture;
-        [Tooltip("连续受伤累计多少点触发一次流泪")]
-        [SerializeField] private float _damageThreshold = 20f;
-        [Tooltip("多久没有新伤就清空累计")]
-        [SerializeField] private float _damageWindow = 30f;
-        [SerializeField] private float _crySeconds = 20f;
-        [Tooltip("扇脸连击触发后，连击结束时泪痕还会保留多久")]
-        [SerializeField] private float _slapCrySeconds = 20f;
+        private float _streakWidthRatio = 0.12f;
+        private float _dropSizeRatio = 0.25f;
+        private float _dropInterval = 0.5f;
+        private float _surfaceOffset = 0.01f;
+        private float _faceSize = 0.46f;
+        private float _faceForward = 0.25f;
+        private Vector2 _faceOffset = Vector2.zero;
+        private Texture2D _dropTexture;
+        private Color _simpleTearColor = new Color(0.28f, 0.62f, 0.95f, 0.85f);
+        private float _simpleTearWidthRatio = 0.2f;
+        private float _damageThreshold = 20f;
+        private float _damageWindow = 30f;
+        private float _crySeconds = 20f;
+        private float _slapCrySeconds = 20f;
 
         static readonly float[] PathT = { 0f, 0.18f, 0.45f, 0.75f, 1f };
         static readonly string[] CryLines =
@@ -55,6 +49,8 @@ namespace MaidHome.Gameplay.Maid
         static Texture2D _fallbackStreak;
         static bool _dropResourceChecked;
         static Texture2D _dropResource;
+        static Texture2D _fallbackDrop;
+        Material _simpleStreakMaterial;
 
         readonly Vector3[] _pathLeft = new Vector3[PathPoints];
         readonly Vector3[] _pathRight = new Vector3[PathPoints];
@@ -67,6 +63,8 @@ namespace MaidHome.Gameplay.Maid
         readonly List<int> _headTriangles = new List<int>();
 
         MaidAgent _agent;
+        MaidTearsConfig _settings;
+        bool _settingsLoaded;
         MaidFaceRig _rig;
         Transform _head;
         MeshFilter _streakFilter;
@@ -77,6 +75,7 @@ namespace MaidHome.Gameplay.Maid
         float _width;
         float _dropSize;
         bool _headSurfaceReady;
+        bool _simpleTears;
 
         bool _visible;
         bool _held;
@@ -91,9 +90,40 @@ namespace MaidHome.Gameplay.Maid
             get { return _visible; }
         }
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                Debug.LogError("MaidTears 没有挂 MaidTearsConfig，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _streakWidthRatio = _settings.StreakWidthRatio;
+            _dropSizeRatio = _settings.DropSizeRatio;
+            _dropInterval = _settings.DropInterval;
+            _surfaceOffset = _settings.SurfaceOffset;
+            _faceSize = _settings.FaceSize;
+            _faceForward = _settings.FaceForward;
+            _faceOffset = _settings.FaceOffset;
+            _dropTexture = _settings.DropTexture;
+            _simpleTearColor = _settings.SimpleTearColor;
+            _simpleTearWidthRatio = _settings.SimpleTearWidthRatio;
+            _damageThreshold = _settings.DamageThreshold;
+            _damageWindow = _settings.DamageWindow;
+            _crySeconds = _settings.CrySeconds;
+            _slapCrySeconds = _settings.SlapCrySeconds;
+
+            return true;
+        }
         void Awake()
         {
-            _agent = GetComponent<MaidAgent>();
+            LoadSettings();
+            EnsureAgent();
+        }
+
+        void OnEnable()
+        {
+            EnsureAgent();
         }
 
         void OnDisable()
@@ -101,8 +131,24 @@ namespace MaidHome.Gameplay.Maid
             Deactivate();
         }
 
+        void OnDestroy()
+        {
+            if (_simpleStreakMaterial != null)
+            {
+                Destroy(_simpleStreakMaterial);
+                _simpleStreakMaterial = null;
+            }
+        }
+
         void Update()
         {
+            EnsureAgent();
+            if (!LoadSettings())
+            {
+                Deactivate();
+                return;
+            }
+
             if (!_visible)
             {
                 return;
@@ -149,7 +195,7 @@ namespace MaidHome.Gameplay.Maid
             RebuildMesh(grow, alpha);
             EnsureDrops();
 
-            if (grow >= 1f && now >= _nextDropAt && HeadUpright())
+            if (grow >= 1f && now >= _nextDropAt && (_simpleTears || HeadUpright()))
             {
                 EmitDrops();
                 _nextDropAt = now + Mathf.Max(0.1f, _dropInterval);
@@ -207,6 +253,12 @@ namespace MaidHome.Gameplay.Maid
 
         public void AddDamage(float amount)
         {
+            EnsureAgent();
+            if (!LoadSettings())
+            {
+                return;
+            }
+
             if (!GameSettingsStore.Current.TearsEnabled || !MaidInjuryRules.Allows(_agent)
                 || !(amount > 0f))
             {
@@ -258,6 +310,12 @@ namespace MaidHome.Gameplay.Maid
 
         void Activate()
         {
+            EnsureAgent();
+            if (!LoadSettings())
+            {
+                return;
+            }
+
             if (!GameSettingsStore.Current.TearsEnabled || !MaidInjuryRules.Allows(_agent))
             {
                 return;
@@ -329,13 +387,17 @@ namespace MaidHome.Gameplay.Maid
                 go.transform.SetParent(_head, false);
                 _streakFilter = go.AddComponent<MeshFilter>();
                 _streakRenderer = go.AddComponent<MeshRenderer>();
-                _streakRenderer.sharedMaterial = StreakMaterial();
+                _streakRenderer.sharedMaterial = _simpleTears ? SimpleStreakMaterial() : StreakMaterial();
                 _streakRenderer.shadowCastingMode = ShadowCastingMode.Off;
                 _streakRenderer.receiveShadows = false;
                 _streakRenderer.sortingOrder = 15;
                 _streakMesh = new Mesh();
                 _streakMesh.name = "MaidTearStreaks";
                 _streakFilter.sharedMesh = _streakMesh;
+            }
+            else if (_streakRenderer != null)
+            {
+                _streakRenderer.sharedMaterial = _simpleTears ? SimpleStreakMaterial() : StreakMaterial();
             }
 
             EnsureDrops();
@@ -393,13 +455,51 @@ namespace MaidHome.Gameplay.Maid
                 _dropResource = Resources.Load<Texture2D>(DropTexturePath);
             }
 
-            return _dropResource;
+            return _dropResource != null ? _dropResource : FallbackDropTexture();
+        }
+
+        static Texture2D FallbackDropTexture()
+        {
+            if (_fallbackDrop != null)
+            {
+                return _fallbackDrop;
+            }
+
+            const int size = 16;
+            _fallbackDrop = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            _fallbackDrop.name = "MaidTearFallbackDrop";
+            _fallbackDrop.wrapMode = TextureWrapMode.Clamp;
+            _fallbackDrop.filterMode = FilterMode.Bilinear;
+            Color[] pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x + 0.5f) / size * 2f - 1f;
+                    float dy = (y + 0.5f) / size * 2f - 1f;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    float alpha = Mathf.Clamp01((1f - d) * 2.5f);
+                    pixels[y * size + x] = new Color(0.28f, 0.62f, 0.95f, alpha);
+                }
+            }
+
+            _fallbackDrop.SetPixels(pixels);
+            _fallbackDrop.Apply();
+            return _fallbackDrop;
         }
 
         void BuildRig()
         {
+            EnsureAgent();
             _rig = MaidFaceRig.Build(transform);
             _head = _rig != null ? _rig.Head : null;
+            // 存档标记和实际组件任一命中都按方块模型处理；
+            // 组件在睡觉/受伤时可能暂时 disabled，不能只信 enabled。
+            _simpleTears = _agent != null
+                && ((_agent.Save != null && _agent.Save.SimpleBedrockModel)
+                    || (_agent.Save != null && string.IsNullOrEmpty(_agent.Save.AnimationFile))
+                    || _agent.GetComponent<MaidSimpleBedrockAnimator>() != null
+                    || MaidSimpleBedrockAnimator.HasDefaultRig(_agent.transform));
             if (_head == null)
             {
                 return;
@@ -512,10 +612,38 @@ namespace MaidHome.Gameplay.Maid
                 right.z = planeZ;
             }
 
-            _width = Mathf.Max(0.01f, faceWidth * _streakWidthRatio);
+            _width = Mathf.Max(0.01f, faceWidth
+                * (_simpleTears ? _simpleTearWidthRatio : _streakWidthRatio));
             _dropSize = Mathf.Max(0.01f, _width * _dropSizeRatio);
-            BuildPath(left, centerX, minY, maxY, planeZ, _pathLeft);
-            BuildPath(right, centerX, minY, maxY, planeZ, _pathRight);
+            if (_simpleTears)
+            {
+                BuildSimplePath(left, minY, maxY, planeZ, _pathLeft);
+                BuildSimplePath(right, minY, maxY, planeZ, _pathRight);
+            }
+            else
+            {
+                BuildPath(left, centerX, minY, maxY, planeZ, _pathLeft);
+                BuildPath(right, centerX, minY, maxY, planeZ, _pathRight);
+            }
+        }
+
+        void BuildSimplePath(Vector3 eye, float minY, float maxY, float planeZ, Vector3[] path)
+        {
+            float height = Mathf.Max(0.01f, maxY - minY);
+            float top = Mathf.Clamp(eye.y, minY + height * 0.1f, maxY);
+            float bottom = minY + height * 0.03f;
+            float surfaceZ;
+            float z = Mathf.Max(planeZ, eye.z);
+            if (TryHeadSurfaceZ(eye.x, eye.y, out surfaceZ))
+            {
+                z = Mathf.Max(z, surfaceZ);
+            }
+            z += _surfaceOffset;
+            for (int i = 0; i < PathPoints; i++)
+            {
+                float t = PathT[i];
+                path[i] = new Vector3(eye.x, Mathf.Lerp(top, bottom, t), z);
+            }
         }
 
         bool TryEyeLocalPoints(out Vector3 left, out Vector3 right)
@@ -772,6 +900,36 @@ namespace MaidHome.Gameplay.Maid
             _drops.Emit(emit, 1);
         }
 
+        Material SimpleStreakMaterial()
+        {
+            if (_simpleStreakMaterial != null)
+            {
+                return _simpleStreakMaterial;
+            }
+
+            Shader shader = Shader.Find("Sprites/Default");
+            if (shader == null)
+            {
+                shader = Shader.Find("Unlit/Transparent");
+            }
+
+            if (shader == null)
+            {
+                shader = Shader.Find("Standard");
+            }
+
+            // 用和内建眼泪同一个 Sprites/Default，避免自定义 Shader 在构建里丢材质变紫。
+            _simpleStreakMaterial = new Material(shader);
+            _simpleStreakMaterial.mainTexture = Texture2D.whiteTexture;
+            _simpleStreakMaterial.name = "MaidTearSimple";
+            if (_simpleStreakMaterial.HasProperty("_Color"))
+            {
+                _simpleStreakMaterial.SetColor("_Color", _simpleTearColor);
+            }
+            _simpleStreakMaterial.renderQueue = 3000;
+            return _simpleStreakMaterial;
+        }
+
         static Material StreakMaterial()
         {
             if (_streakMaterial != null)
@@ -854,7 +1012,13 @@ namespace MaidHome.Gameplay.Maid
 
         public static MaidTears Find(MaidAgent agent)
         {
-            return agent != null ? agent.GetComponent<MaidTears>() : null;
+            MaidTears tears = agent != null ? agent.GetComponent<MaidTears>() : null;
+            if (tears != null)
+            {
+                tears.Bind(agent);
+            }
+
+            return tears;
         }
 
         public static MaidTears Ensure(MaidAgent agent)
@@ -870,7 +1034,36 @@ namespace MaidHome.Gameplay.Maid
                 tears = agent.gameObject.AddComponent<MaidTears>();
             }
 
+            tears.Bind(agent);
             return tears;
+        }
+
+        void EnsureAgent()
+        {
+            if (_agent == null)
+            {
+                _agent = GetComponent<MaidAgent>();
+            }
+        }
+
+        bool LoadSettings()
+        {
+            if (_settingsLoaded)
+            {
+                return _settings != null;
+            }
+
+            _settingsLoaded = true;
+            _settings = Resources.Load<MaidTearsConfig>("Settings/MaidTearsConfig");
+            return ApplySettings();
+        }
+
+        public void Bind(MaidAgent agent)
+        {
+            if (agent != null)
+            {
+                _agent = agent;
+            }
         }
 
         /// <summary>累计受伤；同一次战斗里超过阈值就哭一场</summary>

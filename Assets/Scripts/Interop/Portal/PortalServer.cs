@@ -26,7 +26,7 @@ namespace MaidHome.Interop.Portal
     public sealed class PortalServer : IDisposable
     {
         public const int DefaultPort = 7411;
-        public const int ProtocolVersion = 1;
+        public const int ProtocolVersion = 2;
 
         static readonly byte[] EmptyBytes = new byte[0];
 
@@ -456,14 +456,20 @@ namespace MaidHome.Interop.Portal
         void OnHello(Connection connection, JsonValue header)
         {
             connection.Name = header["client"].AsString("");
-            string warning = header["version"].AsInt(0) == ProtocolVersion
-                ? ""
-                : "协议版本不一致（客户端 " + header["version"].AsInt(0) + "，服务端 " + ProtocolVersion + "）";
+            int clientVersion = header["version"].AsInt(0);
+            if (clientVersion != ProtocolVersion)
+            {
+                SendError(connection, "hello",
+                    "协议版本不一致（客户端 " + clientVersion + "，服务端 " + ProtocolVersion
+                    + "），请同时更新手机 APK 和 MaidHome Bridge");
+                return;
+            }
 
             string reply = new JsonWriter("hello.ok")
                 .Add("version", ProtocolVersion)
                 .Add("server", "MaidHome")
                 .Raw("kinds", "[\"maid\",\"house\",\"sound\"]")
+                .Raw("capabilities", "[\"maid_ai_chat_v1\"]")
                 .ToString();
             Send(connection, reply, null, false);
 
@@ -471,7 +477,7 @@ namespace MaidHome.Interop.Portal
             {
                 Type = PortalNoticeType.ClientConnected,
                 Name = connection.Name,
-                Message = warning
+                Message = ""
             });
         }
 
@@ -758,6 +764,7 @@ namespace MaidHome.Interop.Portal
                     .Add("id", package.Id)
                     .Add("name", package.Name)
                     .Add("total_bytes", total)
+                    .Add("file_count", package.Files.Count)
                     .Raw("data", string.IsNullOrEmpty(package.DataJson) ? "{}" : package.DataJson)
                     .ToString();
                 if (!Send(connection, begin, null, false))

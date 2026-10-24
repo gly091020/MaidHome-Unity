@@ -42,7 +42,7 @@ namespace MaidHome.Gameplay.Maid
         const float ReversalDistance = 0.012f;
         const int MaxStepsPerFrame = 8;
 
-        [Header("配置（接了就覆盖下面的默认参数）")]
+        [Header("配置（留空自动读取 Resources/Settings；指定则优先）")]
         [SerializeField] private MaidFaceSettings _settings;
 
         [Header("拖耳朵")]
@@ -299,9 +299,78 @@ namespace MaidHome.Gameplay.Maid
 
         static Texture2D _ellipse;
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                _settings = Resources.Load<MaidFaceSettings>("Settings/MaidFaceSettings");
+            }
+
+            if (_settings == null)
+            {
+                Debug.LogError("MaidFaceInteraction 没有挂 MaidFaceSettings，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _earRollDegrees = _settings.EarRollDegrees;
+            _earPitchDegrees = _settings.EarPitchDegrees;
+            _earTwistDegrees = _settings.EarTwistDegrees;
+            _earDragResponse = _settings.EarDragResponse;
+            _earStretchStart = _settings.EarStretchStart;
+            _earStretchFull = _settings.EarStretchFull;
+            _earStretchMax = _settings.EarStretchMax;
+            _earDamageStretch = _settings.EarDamageStretch;
+            _faceDragStartRatio = _settings.FaceDragStartRatio;
+            _faceDragMaxYaw = _settings.FaceDragMaxYaw;
+            _faceDragMaxPitch = _settings.FaceDragMaxPitch;
+            _faceDragDamageAngle = _settings.FaceDragDamageAngle;
+            _faceDragReturnSpeed = _settings.FaceDragReturnSpeed;
+            _slapMinDistance = _settings.SlapMinDistance;
+            _slapMaxSeconds = _settings.SlapMaxSeconds;
+            _slapMinSpeed = _settings.SlapMinSpeed;
+            _slapHorizontalRatio = _settings.SlapHorizontalRatio;
+            _slapRepeatDelay = _settings.SlapRepeatDelay;
+            _comboTimeoutSeconds = _settings.ComboTimeoutSeconds;
+            _comboMilestoneStep = _settings.ComboMilestoneStep;
+            _slapYawDegrees = _settings.SlapYawDegrees;
+            _slapRollDegrees = _settings.SlapRollDegrees;
+            _slapVolume = _settings.SlapVolume;
+            _milestoneClip = _settings.MilestoneClip;
+            _eyeYawDegrees = _settings.EyeYawDegrees;
+            _eyePitchDegrees = _settings.EyePitchDegrees;
+            _cheekYawDegrees = _settings.CheekYawDegrees;
+            _cheekPitchDegrees = _settings.CheekPitchDegrees;
+            _tapMaxSeconds = _settings.TapMaxSeconds;
+            _tapSlopPixels = _settings.TapSlopPixels;
+            _pokeCooldownSeconds = _settings.PokeCooldownSeconds;
+            _pokeReactionCooldownSeconds = _settings.PokeReactionCooldownSeconds;
+            _hitPaddingPixels = _settings.HitPaddingPixels;
+            _earZoneScale = _settings.EarZoneScale;
+            _faceEyeUvMin = _settings.FaceEyeUvMin;
+            _faceEyeUvSize = _settings.FaceEyeUvSize;
+            _facePixels = _settings.FacePixels;
+            _turnSeconds = _settings.TurnSeconds;
+            _voiceVolume = _settings.VoiceVolume;
+            _flashColor = _settings.FlashColor;
+            _flashSeconds = _settings.FlashSeconds;
+            _lineSeconds = _settings.LineSeconds;
+            _complainCooldownSeconds = _settings.ComplainCooldownSeconds;
+            _slapLineCooldownSeconds = _settings.SlapLineCooldownSeconds;
+            _showZones = _settings.ShowZones;
+            _slapOnly = _settings.SlapOnly;
+            _maskBlocksEyes = _settings.MaskBlocksEyes;
+            _comboSizeRatio = _settings.ComboSizeRatio;
+            _comboTopRatio = _settings.ComboTopRatio;
+            _milestoneSizeRatio = _settings.MilestoneSizeRatio;
+            _milestoneTopRatio = _settings.MilestoneTopRatio;
+            _comboParticleScale = _settings.ComboParticleScale;
+            _comboScale = _settings.ComboScale;
+
+            return true;
+        }
         void Awake()
         {
-            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidFaceInteraction");
+            ApplySettings();
         }
 
         /// <summary>这个女仆能不能摸脸（有头就行），用来决定面板按钮能不能点</summary>
@@ -1271,6 +1340,7 @@ namespace MaidHome.Gameplay.Maid
             PlaySlapSound();
             PlayHurtAnimation();
             MaidDamageFlash.Flash(_agent != null ? _agent.gameObject : null, _flashColor, _flashSeconds);
+            MaidAiChatController.ReportPhysicalHit(_agent, "slap");
 
             _comboHud.Timeout = _comboTimeoutSeconds;
             _comboHud.Step = _comboMilestoneStep;

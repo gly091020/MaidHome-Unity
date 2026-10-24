@@ -969,6 +969,12 @@ namespace MaidHome.Core.Settings
                 input.contentType = InputField.ContentType.DecimalNumber;
             }
 
+            if (attribute.Secret)
+            {
+                input.contentType = InputField.ContentType.Password;
+                input.asteriskChar = '●';
+            }
+
             input.onEndEdit.AddListener(valueText =>
             {
                 if (type == typeof(int))

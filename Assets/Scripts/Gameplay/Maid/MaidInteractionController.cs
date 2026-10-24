@@ -1,5 +1,6 @@
 using System;
 using MaidHome.Core.Input;
+using MaidHome.Core.Settings;
 using MaidHome.Gameplay.House;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -25,7 +26,7 @@ namespace MaidHome.Gameplay.Maid
             get { return _current; }
         }
 
-        [Header("配置（接了就覆盖下面的默认参数）")]
+        [Header("配置（留空自动读取 Resources/Settings；指定则优先）")]
         [SerializeField] private MaidInteractionControllerSettings _settings;
 
         [SerializeField] private MaidInteractionPanel _panel;
@@ -80,14 +81,49 @@ namespace MaidHome.Gameplay.Maid
         MaidBodyInteraction _body;
         MaidSignInteraction _sign;
         MaidMaskInteraction _mask;
+        MaidAiChatController _aiChat;
         float _appliedFeedFov = -1f;
         float _appliedGroomFov = -1f;
         Vector3 _groomFocusCenter;
         bool _hasGroomFocus;
 
+        bool ApplySettings()
+        {
+            if (_settings == null)
+            {
+                _settings = Resources.Load<MaidInteractionControllerSettings>("Settings/MaidInteractionControllerSettings");
+            }
+
+            if (_settings == null)
+            {
+                Debug.LogError("MaidInteractionController 没有挂 MaidInteractionControllerSettings，请到 Assets/Resources/Settings 里选择配置", this);
+                return false;
+            }
+
+            _faceCameraSeconds = _settings.FaceCameraSeconds;
+            _tailSniffClip = _settings.TailSniffClip;
+            _slapClip = _settings.SlapClip;
+            _faceOrthographicSize = _settings.FaceOrthographicSize;
+            _faceFocusPitchDegrees = _settings.FaceFocusPitchDegrees;
+            _faceFocusLookHeightRatio = _settings.FaceFocusLookHeightRatio;
+            _petOrthographicSize = _settings.PetOrthographicSize;
+            _petFocusPitchDegrees = _settings.PetFocusPitchDegrees;
+            _petFocusLookHeightRatio = _settings.PetFocusLookHeightRatio;
+            _feedPerspectiveFov = _settings.FeedPerspectiveFov;
+            _groomOrthographicSize = _settings.GroomOrthographicSize;
+            _groomFocusPitchDegrees = _settings.GroomFocusPitchDegrees;
+            _groomZoom = _settings.GroomZoom;
+            _groomPerspectiveFov = _settings.GroomPerspectiveFov;
+            _signOrthographicSize = _settings.SignOrthographicSize;
+            _maskOrthographicSize = _settings.MaskOrthographicSize;
+            _clickDistance = _settings.ClickDistance;
+            _clickMask = _settings.ClickMask;
+
+            return true;
+        }
         void Awake()
         {
-            MaidInteractionConfigApplier.ApplyRequired(_settings, this, this, "MaidInteractionController");
+            ApplySettings();
             if (_panel == null)
             {
                 _panel = GetComponent<MaidInteractionPanel>();
@@ -231,6 +267,8 @@ namespace MaidHome.Gameplay.Maid
 
         void OnEnable()
         {
+            GameSettingsStore.Changed -= OnGameSettingsChanged;
+            GameSettingsStore.Changed += OnGameSettingsChanged;
             if (_panel != null)
             {
                 _panel.CloseRequested += Close;
@@ -241,6 +279,7 @@ namespace MaidHome.Gameplay.Maid
                 _panel.GroomRequested += OpenGroom;
                 _panel.BodyRequested += OpenBody;
                 _panel.AttachRequested += OpenAttachments;
+                _panel.ChatRequested += OpenAiChat;
             }
 
             if (_tail != null)
@@ -293,6 +332,7 @@ namespace MaidHome.Gameplay.Maid
 
         void OnDisable()
         {
+            GameSettingsStore.Changed -= OnGameSettingsChanged;
             if (_panel != null)
             {
                 _panel.CloseRequested -= Close;
@@ -303,6 +343,7 @@ namespace MaidHome.Gameplay.Maid
                 _panel.GroomRequested -= OpenGroom;
                 _panel.BodyRequested -= OpenBody;
                 _panel.AttachRequested -= OpenAttachments;
+                _panel.ChatRequested -= OpenAiChat;
             }
 
             if (_tail != null)
@@ -357,6 +398,8 @@ namespace MaidHome.Gameplay.Maid
                 _body.Abort();
             }
 
+            HideAiChatPanel();
+
             if (_pet != null && _pet.IsActive)
             {
                 _pet.Abort();
@@ -373,6 +416,16 @@ namespace MaidHome.Gameplay.Maid
             if (_current != null && !_current.gameObject.activeInHierarchy)
             {
                 Close();
+                return;
+            }
+
+            if (_aiChat != null && _aiChat.PanelOpen)
+            {
+                if (PointerInput.BackPressed)
+                {
+                    CloseAiChat();
+                }
+
                 return;
             }
 
@@ -572,6 +625,8 @@ namespace MaidHome.Gameplay.Maid
                 _mask.Abort();
             }
 
+            HideAiChatPanel();
+
             // 关界面可能是从中/重挡直接退出来的，投影也得切回正交
             RestoreFeedProjection();
             RestoreGroomProjection();
@@ -584,6 +639,7 @@ namespace MaidHome.Gameplay.Maid
             _current = null;
             if (_cameraFitter != null)
             {
+                _cameraFitter.SetPerspective(0f);
                 _cameraFitter.RestoreHouseView();
             }
 
@@ -637,6 +693,7 @@ namespace MaidHome.Gameplay.Maid
 
             if (_tail.Begin(_current, _tailSniffClip))
             {
+                TriggerInteractionFeeling("tail", "摸尾巴");
                 _panel.Close();
             }
         }
@@ -661,6 +718,7 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            TriggerInteractionFeeling("face", "摸脸");
             _panel.Close();
             if (_cameraFitter != null && _faceOrthographicSize > 0f)
             {
@@ -702,6 +760,7 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            TriggerInteractionFeeling("pet", "摸摸头");
             _panel.Close();
             FocusPet();
         }
@@ -751,6 +810,7 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            TriggerInteractionFeeling("feed", "喂蛋糕");
             // 每次进模式重新对一次投影（上一次可能是透视退出来的）
             _appliedFeedFov = -1f;
 
@@ -812,6 +872,60 @@ namespace MaidHome.Gameplay.Maid
             _menu.Show(_sign != null && _sign.Supports(_current), _mask != null && _mask.Supports(_current));
         }
 
+        void OpenAiChat()
+        {
+            if (_current == null || !GameSettingsStore.Current.AiEnabled) return;
+            MaidAiChatController chat = _current.GetComponent<MaidAiChatController>();
+            if (chat == null) chat = _current.gameObject.AddComponent<MaidAiChatController>();
+            if (_aiChat != null && _aiChat != chat) _aiChat.CloseRequested -= CloseAiChat;
+            _aiChat = chat;
+            _aiChat.CloseRequested -= CloseAiChat;
+            _aiChat.CloseRequested += CloseAiChat;
+            _panel.Close();
+            Canvas canvas = _panel.GetComponentInParent<Canvas>();
+            if (canvas == null) canvas = FindObjectOfType<Canvas>();
+            _aiChat.ShowPanel(canvas);
+        }
+
+        void CloseAiChat()
+        {
+            if (_aiChat != null)
+            {
+                _aiChat.HidePanel();
+                _aiChat.CloseRequested -= CloseAiChat;
+                _aiChat = null;
+            }
+
+            if (_current != null && _panel != null) ReopenPanel();
+        }
+
+        void HideAiChatPanel()
+        {
+            if (_aiChat != null)
+            {
+                _aiChat.HidePanel();
+                _aiChat.CloseRequested -= CloseAiChat;
+                _aiChat = null;
+            }
+        }
+
+        void TriggerInteractionFeeling(string interactionId, string interactionName)
+        {
+            if (_current == null || !GameSettingsStore.Current.AiEnabled) return;
+            MaidAiChatController chat = _current.GetComponent<MaidAiChatController>();
+            if (chat == null) chat = _current.gameObject.AddComponent<MaidAiChatController>();
+            chat.TriggerInteractionFeeling(interactionId, interactionName);
+        }
+
+        void OnGameSettingsChanged()
+        {
+            bool enabled = GameSettingsStore.Current.AiEnabled;
+            if (_panel != null) _panel.SetAiAvailable(enabled);
+            if (enabled || _aiChat == null) return;
+            _aiChat.DisableForGlobalSwitch();
+            CloseAiChat();
+        }
+
         /// <summary>第二层点「返回」→ 回第一层女仆面板</summary>
         void CloseAttachments()
         {
@@ -835,6 +949,7 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            TriggerInteractionFeeling("groom", "梳毛");
             // 每次进模式重新对一次投影（上一次可能是透视退出来的）
             _appliedGroomFov = -1f;
 
@@ -908,6 +1023,7 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            TriggerInteractionFeeling("body", "玩全身");
             _panel.Close();
         }
 
@@ -931,6 +1047,7 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            TriggerInteractionFeeling("sign", "挂牌");
             _panel.Close();
             if (_menu != null)
             {
@@ -991,6 +1108,7 @@ namespace MaidHome.Gameplay.Maid
                 return;
             }
 
+            TriggerInteractionFeeling("mask", "戴面具");
             _panel.Close();
             if (_menu != null)
             {

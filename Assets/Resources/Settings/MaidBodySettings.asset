@@ -24,6 +24,11 @@ MonoBehaviour:
     m_Bits: 4294967295
   _ignoreAllSelfCollision: 1
   _disableAngleLimits: 0
+  _bodyPerspectiveFov: 35
+  _viewRotateDegreesPerScreenHeight: 180
+  _viewPitchMinDegrees: -75
+  _viewPitchMaxDegrees: 75
+  _viewFitMargin: 1.15
   _sensorGravity: 9.81
   _sensorAccelerationScale: 10
   _sensorJerkScale: 0.5
