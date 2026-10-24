@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using MaidHome.Core.Save;
+using MaidHome.Core.Scene;
 using MaidHome.Gameplay.Maid;
 using MaidHome.Interop.Maid;
 using UnityEngine;
@@ -386,7 +387,36 @@ namespace MaidHome.Gameplay.Ar
         void Exit()
         {
             ClearMaid();
-            SceneManager.LoadScene(_exitScene);
+            if (!SceneTransition.Go(_exitScene, PrepareCameraForTransition))
+            {
+                SceneManager.LoadScene(_exitScene);
+            }
+        }
+
+        /// <summary>ARCore 每帧会重写相机位姿，过场抬镜头前必须先关掉这些驱动。</summary>
+        void PrepareCameraForTransition()
+        {
+            if (_cameraManager != null)
+            {
+                _cameraManager.enabled = false;
+            }
+
+            if (_camera != null)
+            {
+                ARPoseDriver poseDriver = _camera.GetComponent<ARPoseDriver>();
+                if (poseDriver != null)
+                {
+                    poseDriver.enabled = false;
+                }
+
+                ARCameraBackground background = _camera.GetComponent<ARCameraBackground>();
+                if (background != null)
+                {
+                    background.enabled = false;
+                }
+
+                _camera.clearFlags = CameraClearFlags.Skybox;
+            }
         }
 
         MaidSaveData FindCandidate(string maidId)

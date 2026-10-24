@@ -1,6 +1,8 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using MaidHome.Core.UI;
+using MaidHome.Gameplay.Bag;
 using MaidHome.Gameplay.House;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -8,9 +10,11 @@ using UnityEngine.SceneManagement;
 namespace MaidHome.Core.Scene
 {
     /// <summary>
-    /// 切场景的镜头过场：**当前相机先升到天上（默认 y +100）→ 异步加载新场景（加载期间停在高处，
-    /// 画面是天空，不会看到黑屏或旧场景闪一下）→ 新场景的相机从同样的高度降回正常取景**。
-    /// 开始移动前会把场景根下的 Canvas 全部收起来（屏幕空间覆盖的界面不会跟着飞），整段走完再放出来。
+    /// 切场景的镜头过场：**先在原视角异步加载新场景 → 加载就绪后当前相机升到天上（默认 y +100）
+    /// → 激活新场景 → 新场景的相机从同样的高度降回正常取景**。
+    /// 加载期间镜头不动，避免资源还没准备好就把玩家留在天空视角干等。
+    /// 开始切换时先把场景根下的 Canvas（含 Main 的侧边按钮）收起来，等整段走完再放出来；
+    /// 镜头本身仍等目标场景资源加载完成后再移动。
     ///
     /// 两个场景各有自己的主相机，所以升降只能分两段做，而且"抬了多少"必须记在 HouseCameraFitter 里
     /// （它每次 ApplyView 都会带上这个偏移）——否则过场期间房子/女仆重新取景，相机会被一下拽回地面。
@@ -46,6 +50,15 @@ namespace MaidHome.Core.Scene
         /// <summary>开始一次带动画的切场景。场景名必须是 Build Settings 里有的。</summary>
         public static bool Go(string sceneName)
         {
+            return Go(sceneName, null);
+        }
+
+        /// <summary>
+        /// beforeMotion 在目标场景加载就绪、镜头尚未移动时调用。
+        /// AR 退出用它先关闭会覆盖 transform 的姿态驱动。
+        /// </summary>
+        public static bool Go(string sceneName, Action beforeMotion)
+        {
             if (string.IsNullOrEmpty(sceneName))
             {
                 Debug.LogWarning("切场景：场景名是空的");
@@ -64,7 +77,7 @@ namespace MaidHome.Core.Scene
                 return false;
             }
 
-            Instance.StartCoroutine(Instance.GoRoutine(sceneName));
+            Instance.StartCoroutine(Instance.GoRoutine(sceneName, beforeMotion));
             return true;
         }
 
@@ -116,27 +129,27 @@ namespace MaidHome.Core.Scene
             HideSceneCanvases();
         }
 
-        IEnumerator GoRoutine(string sceneName)
+        IEnumerator GoRoutine(string sceneName, Action beforeMotion)
         {
             _busy = true;
-            ResolveCamera();
-            HideSceneCanvases();
 
-            // 1. 升上去
-            yield return LiftRoutine(_liftHeight, _riseSeconds);
-
-            // 2. 加载：allowSceneActivation=false 能把旧场景留在屏幕上，加载期间停在高处看天
+            // 1. 先在原视角加载。Main 的侧边按钮先滑出，再把场景 UI 收起来。
             AsyncOperation operation = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
             if (operation == null)
             {
                 Debug.LogError("切场景失败：" + sceneName);
-                yield return LiftRoutine(0f, _descendSeconds);
-                ShowSceneCanvases();
                 _busy = false;
                 yield break;
             }
 
             operation.allowSceneActivation = false;
+            BagPanel bag = FindObjectOfType<BagPanel>();
+            if (bag != null)
+            {
+                yield return bag.HideSideButtonsForSceneTransition();
+            }
+
+            HideSceneCanvases();
             float waitStart = Time.realtimeSinceStartup;
             bool hintShown = false;
             while (operation.progress < 0.9f)
@@ -150,16 +163,47 @@ namespace MaidHome.Core.Scene
                 yield return null;
             }
 
-            // 3. 激活新场景（OnSceneLoaded 会把新相机顶起来），然后降下去
-            operation.allowSceneActivation = true;
-            yield return null;
-            yield return LiftRoutine(0f, _descendSeconds);
+            // 2. 新场景资源已经就绪，此时才开始抬镜头。
+            if (beforeMotion != null)
+            {
+                beforeMotion();
+            }
 
-            ShowSceneCanvases();
+            yield return null;
+            ResolveCamera();
+            yield return LiftRoutine(_liftHeight, _riseSeconds);
+
+            // 3. 在最高点激活新场景（OnSceneLoaded 会把新相机顶到同样高度），等完全激活后再降。
+            operation.allowSceneActivation = true;
+            while (!operation.isDone)
+            {
+                yield return null;
+            }
+
+            // 场景激活不代表内容就绪：主场景还要等 HouseSpawner 完成 glTF、格表、NavMesh
+            // 和女仆恢复。加载未完成时保持在最高处，别先降回地面。
+            yield return null;
+            HouseSpawner houseSpawner = FindObjectOfType<HouseSpawner>();
+            while (houseSpawner != null && !houseSpawner.LoadFinished)
+            {
+                yield return null;
+            }
+
+            // 房屋任务完成后再结束场景任务，让进度条走到 100% 并完成淡出，
+            // 避免镜头已经落地时屏幕上还残留未完成的进度。
             if (hintShown)
             {
                 LoadingScreen.Complete(LoadingScreen.SceneJob);
             }
+
+            while (LoadingScreen.IsShowing)
+            {
+                yield return null;
+            }
+
+            yield return LiftRoutine(0f, _descendSeconds);
+
+            ShowSceneCanvases();
 
             _busy = false;
         }

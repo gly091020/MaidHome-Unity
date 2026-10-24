@@ -645,7 +645,7 @@ namespace MaidHome.Gameplay.Maid
 
             if (_panel != null)
             {
-                _panel.Close();
+                _panel.CloseAnimated();
             }
 
             if (_menu != null)

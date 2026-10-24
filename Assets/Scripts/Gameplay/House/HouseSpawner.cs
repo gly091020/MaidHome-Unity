@@ -20,9 +20,13 @@ namespace MaidHome.Gameplay.House
 
         public HouseGridView View { get; private set; }
 
+        /// <summary>这次场景启动里的房子加载是否已经结束（成功或失败都算结束）。</summary>
+        public bool LoadFinished { get; private set; }
+
         async void Start()
         {
-            LoadingScreen.Register(LoadingScreen.HouseJob, 3f, "正在加载房子…");
+            LoadFinished = false;
+            LoadingScreen.Register(LoadingScreen.HouseJob, 3f, "正在加载房子…", 120f);
 
             // 加载期间立起 HouseContext.IsLoading：HouseSwitcher 等不到房子的话会自己再加载一栋，
             // 真机上 glTF + 烘 NavMesh 经常超过它那几秒等待，结果场上并排摆出两栋
@@ -34,6 +38,7 @@ namespace MaidHome.Gameplay.House
             finally
             {
                 HouseContext.EndLoad();
+                LoadFinished = true;
             }
         }
 

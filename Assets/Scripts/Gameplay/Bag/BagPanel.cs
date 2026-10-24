@@ -71,6 +71,8 @@ namespace MaidHome.Gameplay.Bag
         }
         Vector2 _shownPosition;
         Vector2 _shownTogglePosition;
+        Vector2 _sceneExitSidePosition;
+        bool _sceneExitSidePositionSaved;
         Coroutine _slideRoutine;
 
         void Awake()
@@ -126,6 +128,12 @@ namespace MaidHome.Gameplay.Bag
                 return;
             }
 
+            StartCoroutine(OpenArSceneRoutine());
+        }
+
+        IEnumerator OpenArSceneRoutine()
+        {
+            yield return HideSideButtonsForSceneTransition();
             SceneManager.LoadScene(_arSceneName);
         }
 
@@ -189,6 +197,51 @@ namespace MaidHome.Gameplay.Bag
         public void SetVisible(bool visible)
         {
             SetVisible(visible, false);
+        }
+
+        /// <summary>切场景前把整个侧边按钮组向右滑出，而不是直接停用 Canvas。</summary>
+        public IEnumerator HideSideButtonsForSceneTransition()
+        {
+            RectTransform side = _toggleRect != null ? _toggleRect.parent as RectTransform : null;
+            if (side == null)
+            {
+                yield break;
+            }
+
+            _sceneExitSidePosition = side.anchoredPosition;
+            _sceneExitSidePositionSaved = true;
+            Canvas canvas = side.GetComponentInParent<Canvas>();
+            RectTransform canvasRect = canvas != null ? canvas.transform as RectTransform : null;
+            float distance = canvasRect != null && canvasRect.rect.width > 1f
+                ? canvasRect.rect.width
+                : Screen.width;
+            Vector2 from = side.anchoredPosition;
+            Vector2 to = from + Vector2.right * distance;
+            float length = Mathf.Max(0.01f, _slideSeconds);
+            float elapsed = 0f;
+            while (elapsed < length && side != null)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / length));
+                side.anchoredPosition = Vector2.LerpUnclamped(from, to, t);
+                yield return null;
+            }
+
+            if (side != null)
+            {
+                side.anchoredPosition = to;
+            }
+        }
+
+        public void RestoreSideButtonsAfterSceneTransition()
+        {
+            RectTransform side = _toggleRect != null ? _toggleRect.parent as RectTransform : null;
+            if (side != null && _sceneExitSidePositionSaved)
+            {
+                side.anchoredPosition = _sceneExitSidePosition;
+            }
+
+            _sceneExitSidePositionSaved = false;
         }
 
         public void SetVisible(bool visible, bool immediate)

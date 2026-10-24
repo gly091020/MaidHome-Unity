@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Text;
 using MaidHome.Core.Settings;
 using MaidHome.Interop.Maid;
@@ -57,18 +58,33 @@ namespace MaidHome.Gameplay.Maid
         [Tooltip("只对自动生成的面板生效：贴到屏幕下方。自定义面板不会被动")]
         [SerializeField] private bool _placeAtBottom = true;
         [SerializeField] private float _bottomOffset = 40f;
+        [Header("进入动画")]
+        [SerializeField] private float _enterSeconds = 0.22f;
+        [SerializeField] private float _exitSeconds = 0.18f;
+        [SerializeField] private float _enterScale = 0.92f;
+        [Tooltip("完全滑出屏幕下边缘后再多留的距离")]
+        [SerializeField] private float _enterBottomGapPixels = 32f;
 
         bool _generated;
+        CanvasGroup _canvasGroup;
+        RectTransform _panelRect;
+        Coroutine _enterRoutine;
+        Coroutine _exitRoutine;
+        Vector2 _shownPosition;
+        Vector3 _shownScale = Vector3.one;
+        bool _shownPoseCaptured;
+        bool _closing;
 
         public bool IsOpen
         {
-            get { return _panelRoot != null && _panelRoot.activeSelf; }
+            get { return _panelRoot != null && _panelRoot.activeSelf && !_closing; }
         }
 
         void Awake()
         {
             EnsureCreated();
             PlacePanel();
+            EnsureAnimationRefs();
             if (_panelRoot != null && !_generated && (_titleText == null || _closeButton == null))
             {
                 Debug.LogWarning("自定义女仆交互面板没接全 Title / Close Button 之类的引用，对应部分不会更新", this);
@@ -131,6 +147,18 @@ namespace MaidHome.Gameplay.Maid
 
         void OnDestroy()
         {
+            if (_enterRoutine != null)
+            {
+                StopCoroutine(_enterRoutine);
+                _enterRoutine = null;
+            }
+
+            if (_exitRoutine != null)
+            {
+                StopCoroutine(_exitRoutine);
+                _exitRoutine = null;
+            }
+
             if (_closeButton != null)
             {
                 _closeButton.onClick.RemoveListener(RequestClose);
@@ -211,8 +239,11 @@ namespace MaidHome.Gameplay.Maid
         public void Open(MaidSaveData maid, bool tailAvailable, bool faceAvailable, bool feedAvailable,
             bool groomAvailable, bool bodyAvailable, bool petAvailable = true)
         {
+            bool wasOpen = IsOpen;
+            StopMotion();
             EnsureCreated();
             PlacePanel();
+            EnsureAnimationRefs();
             if (_panelRoot == null)
             {
                 return;
@@ -242,6 +273,15 @@ namespace MaidHome.Gameplay.Maid
             {
                 _optionsText.text = BuildOptions(maid, tailAvailable, faceAvailable, feedAvailable,
                     groomAvailable, bodyAvailable, petAvailable);
+            }
+
+            if (wasOpen)
+            {
+                SnapOpen();
+            }
+            else
+            {
+                PlayEnterAnimation();
             }
         }
 
@@ -301,10 +341,26 @@ namespace MaidHome.Gameplay.Maid
 
         public void Close()
         {
+            StopMotion();
+            SnapOpen();
+            _closing = false;
             if (_panelRoot != null)
             {
                 _panelRoot.SetActive(false);
             }
+        }
+
+        /// <summary>正常退出女仆交互时使用：向下滑出并淡出后再停用面板。</summary>
+        public void CloseAnimated()
+        {
+            if (_panelRoot == null || !_panelRoot.activeSelf || _closing)
+            {
+                return;
+            }
+
+            StopMotion();
+            _closing = true;
+            _exitRoutine = StartCoroutine(ExitRoutine());
         }
 
         public void RequestClose()
@@ -739,6 +795,147 @@ namespace MaidHome.Gameplay.Maid
             rect.anchorMax = new Vector2(0.5f, 0f);
             rect.pivot = new Vector2(0.5f, 0f);
             rect.anchoredPosition = new Vector2(0f, _bottomOffset);
+        }
+
+        void EnsureAnimationRefs()
+        {
+            if (_panelRoot == null)
+            {
+                return;
+            }
+
+            if (_panelRect == null)
+            {
+                _panelRect = _panelRoot.transform as RectTransform;
+            }
+
+            if (_canvasGroup == null)
+            {
+                _canvasGroup = _panelRoot.GetComponent<CanvasGroup>();
+                if (_canvasGroup == null)
+                {
+                    _canvasGroup = _panelRoot.AddComponent<CanvasGroup>();
+                }
+            }
+
+            if (_panelRect != null && !_shownPoseCaptured)
+            {
+                _shownPosition = _panelRect.anchoredPosition;
+                _shownScale = _panelRect.localScale;
+                _shownPoseCaptured = true;
+            }
+        }
+
+        void PlayEnterAnimation()
+        {
+            if (_panelRect == null)
+            {
+                return;
+            }
+
+            if (_enterRoutine != null)
+            {
+                StopCoroutine(_enterRoutine);
+            }
+
+            _enterRoutine = StartCoroutine(EnterRoutine());
+        }
+
+        IEnumerator EnterRoutine()
+        {
+            float panelHeight = _panelRect.rect.height > 1f ? _panelRect.rect.height : 380f;
+            float distance = Mathf.Max(0f, _shownPosition.y) + panelHeight + _enterBottomGapPixels;
+            Vector2 fromPosition = _shownPosition + Vector2.down * distance;
+            Vector3 fromScale = _shownScale * Mathf.Clamp(_enterScale, 0.5f, 1f);
+            float length = Mathf.Max(0.01f, _enterSeconds);
+            float elapsed = 0f;
+            while (elapsed < length && _panelRoot != null && _panelRoot.activeSelf)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / length));
+                _panelRect.anchoredPosition = Vector2.LerpUnclamped(fromPosition, _shownPosition, t);
+                _panelRect.localScale = Vector3.LerpUnclamped(fromScale, _shownScale, t);
+                if (_canvasGroup != null)
+                {
+                    _canvasGroup.alpha = Mathf.LerpUnclamped(0.15f, 1f, t);
+                }
+
+                yield return null;
+            }
+
+            SnapOpen();
+            _enterRoutine = null;
+        }
+
+        IEnumerator ExitRoutine()
+        {
+            float panelHeight = _panelRect != null && _panelRect.rect.height > 1f
+                ? _panelRect.rect.height
+                : 380f;
+            float distance = Mathf.Max(0f, _shownPosition.y) + panelHeight + _enterBottomGapPixels;
+            Vector2 toPosition = _shownPosition + Vector2.down * distance;
+            Vector2 fromPosition = _panelRect != null ? _panelRect.anchoredPosition : _shownPosition;
+            Vector3 fromScale = _panelRect != null ? _panelRect.localScale : _shownScale;
+            Vector3 toScale = _shownScale * Mathf.Clamp(_enterScale, 0.5f, 1f);
+            float fromAlpha = _canvasGroup != null ? _canvasGroup.alpha : 1f;
+            float length = Mathf.Max(0.01f, _exitSeconds);
+            float elapsed = 0f;
+            while (elapsed < length && _panelRoot != null && _panelRoot.activeSelf)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / length));
+                if (_panelRect != null)
+                {
+                    _panelRect.anchoredPosition = Vector2.LerpUnclamped(fromPosition, toPosition, t);
+                    _panelRect.localScale = Vector3.LerpUnclamped(fromScale, toScale, t);
+                }
+
+                if (_canvasGroup != null)
+                {
+                    _canvasGroup.alpha = Mathf.LerpUnclamped(fromAlpha, 0f, t);
+                }
+
+                yield return null;
+            }
+
+            _exitRoutine = null;
+            _closing = false;
+            SnapOpen();
+            if (_panelRoot != null)
+            {
+                _panelRoot.SetActive(false);
+            }
+        }
+
+        void StopMotion()
+        {
+            if (_enterRoutine != null)
+            {
+                StopCoroutine(_enterRoutine);
+                _enterRoutine = null;
+            }
+
+            if (_exitRoutine != null)
+            {
+                StopCoroutine(_exitRoutine);
+                _exitRoutine = null;
+            }
+
+            _closing = false;
+        }
+
+        void SnapOpen()
+        {
+            if (_panelRect != null)
+            {
+                _panelRect.anchoredPosition = _shownPosition;
+                _panelRect.localScale = _shownScale;
+            }
+
+            if (_canvasGroup != null)
+            {
+                _canvasGroup.alpha = 1f;
+            }
         }
 
         static Text CreateText(Transform parent, string name, Vector2 anchoredPosition, Vector2 size,

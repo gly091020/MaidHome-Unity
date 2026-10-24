@@ -57,6 +57,12 @@ namespace MaidHome.Core.UI
         /// <summary>加载面板挂在哪个 Canvas 上（切场景过场要跳过它，别把进度条一起收起来）</summary>
         public Canvas Canvas { get; private set; }
 
+        /// <summary>加载条仍在显示或正在淡出。</summary>
+        public static bool IsShowing
+        {
+            get { return Instance != null && Instance._showing; }
+        }
+
         readonly List<Job> _jobs = new List<Job>();
         CanvasGroup _group;
         RectTransform _fillRect;
